@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1e2230"/>
+      <stop offset="1" stop-color="#0d0f15"/>
+    </linearGradient>
+    <linearGradient id="top" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#7dd3fc"/>
+      <stop offset="1" stop-color="#38bdf8"/>
+    </linearGradient>
+  </defs>
+  <rect x="64" y="64" width="896" height="896" rx="200" fill="url(#bg)"/>
+  <g stroke="#0d0f15" stroke-width="10" stroke-linejoin="round">
+    <polygon points="512,214 772,364 512,514 252,364" fill="url(#top)"/>
+    <polygon points="252,364 512,514 512,814 252,664" fill="#0ea5e9"/>
+    <polygon points="772,364 512,514 512,814 772,664" fill="#0369a1"/>
+  </g>
+  <g stroke="#e0f2fe" stroke-opacity="0.55" stroke-width="6" fill="none">
+    <line x1="382" y1="289" x2="642" y2="439"/>
+    <line x1="642" y1="289" x2="382" y2="439"/>
+    <line x1="252" y1="514" x2="512" y2="664"/>
+    <line x1="382" y1="439" x2="382" y2="739"/>
+    <line x1="772" y1="514" x2="512" y2="664"/>
+    <line x1="642" y1="439" x2="642" y2="739"/>
+  </g>
+</svg>
