@@ -150,11 +150,15 @@ pub fn scan_library_with(
     let mut changed = std::mem::take(&mut scan.changed_models);
     changed.sort_unstable();
     changed.dedup();
-    let retagged = if crate::autotag::enabled_on_index(&tx)? {
-        crate::autotag::apply(&tx, Some(&changed), None)?
-    } else {
-        Vec::new()
-    };
+    let mut retagged = Vec::new();
+    if crate::autotag::enabled_on_index(&tx)? {
+        retagged = crate::autotag::apply(&tx, Some(&changed), None)?;
+        // New folders may have made a word common enough to become a tag of its own.
+        if !changed.is_empty() && crate::autotag::suggestions_enabled(&tx)? {
+            queries::recount_library(&tx, lib.id)?;
+            retagged.extend(crate::autotag::create_from_suggestions(&tx)?);
+        }
+    }
     let mut fts_ids = changed.clone();
     fts_ids.extend(retagged);
     fts_ids.sort_unstable();

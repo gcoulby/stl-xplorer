@@ -141,6 +141,20 @@ pub async fn delete_tag(app: AppHandle, id: i64) -> AppResult<Vec<Tag>> {
         )?;
         let ids: Vec<i64> = stmt.query_map([id], |r| r.get(0))?.collect::<Result<_, _>>()?;
         drop(stmt);
+        // A deleted tag must not come straight back from the automatic suggestions.
+        let words: Option<String> = tx.query_row(
+            "SELECT COALESCE(keywords, name) FROM tags WHERE id = ?1",
+            [id],
+            |r| r.get(0),
+        )?;
+        if let Some(w) = words {
+            let words: Vec<String> = w
+                .split([',', '\n', ';'])
+                .map(|k| k.trim().trim_end_matches('*').to_lowercase())
+                .filter(|k| !k.is_empty())
+                .collect();
+            crate::autotag::dismiss(&tx, &words)?;
+        }
         tx.execute("DELETE FROM tags WHERE id = ?1", [id])?;
         queries::refresh_fts(&tx, &ids)?;
         tx.commit()?;
@@ -242,6 +256,46 @@ pub async fn apply_auto_tags(app: AppHandle) -> AppResult<usize> {
         queries::refresh_fts(&tx, &changed)?;
         tx.commit()?;
         Ok(changed.len())
+    })
+    .await
+}
+
+/// Turn automatic tags from suggestions on or off. Turning it on applies them straight away.
+/// Returns how many files gained a tag.
+#[tauri::command]
+pub async fn set_autotag_suggestions(app: AppHandle, enabled: bool) -> AppResult<usize> {
+    blocking(app, move |_, st| {
+        let mut conn = st.db.lock()?;
+        let tx = conn.transaction()?;
+        queries::set_setting(
+            &tx,
+            crate::autotag::SUGGESTIONS_KEY,
+            if enabled { "1" } else { "0" },
+        )?;
+        let changed = if enabled {
+            crate::autotag::create_from_suggestions(&tx)?
+        } else {
+            Vec::new()
+        };
+        queries::refresh_fts(&tx, &changed)?;
+        tx.commit()?;
+        Ok(changed.len())
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn dismiss_suggestion(app: AppHandle, word: String) -> AppResult<()> {
+    blocking(app, move |_, st| {
+        crate::autotag::dismiss(&*st.db.lock()?, &[word])
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn restore_suggestions(app: AppHandle) -> AppResult<()> {
+    blocking(app, |_, st| {
+        queries::delete_setting(&*st.db.lock()?, crate::autotag::DISMISSED_KEY)
     })
     .await
 }

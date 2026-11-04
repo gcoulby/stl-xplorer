@@ -77,6 +77,70 @@ fn load_rules(conn: &Connection, only_tag: Option<i64>) -> AppResult<Vec<Rule>> 
 }
 
 pub const ON_INDEX_KEY: &str = "autotag_on_index";
+/// Turn common folder words into tags by themselves, without the user picking them.
+pub const SUGGESTIONS_KEY: &str = "autotag_suggestions";
+/// Words the user dismissed or whose tag they deleted, as a JSON array. Never suggested again.
+pub const DISMISSED_KEY: &str = "tag_suggestions_dismissed";
+/// A word has to appear in this many folder or archive names before it becomes a tag on its own.
+pub const AUTO_MIN_CONTAINERS: i64 = 3;
+const COLOURS: [&str; 8] = [
+    "#38bdf8", "#a78bfa", "#f472b6", "#fb923c", "#facc15", "#4ade80", "#2dd4bf", "#94a3b8",
+];
+
+pub fn suggestions_enabled(conn: &Connection) -> AppResult<bool> {
+    Ok(crate::db::queries::get_setting(conn, SUGGESTIONS_KEY)?.as_deref() == Some("1"))
+}
+
+pub fn dismissed(conn: &Connection) -> AppResult<Vec<String>> {
+    Ok(crate::db::queries::get_setting(conn, DISMISSED_KEY)?
+        .and_then(|j| serde_json::from_str(&j).ok())
+        .unwrap_or_default())
+}
+
+/// Never suggest (or auto-create) these words again.
+pub fn dismiss(conn: &Connection, words: &[String]) -> AppResult<()> {
+    let mut list = dismissed(conn)?;
+    for w in words {
+        let w = w.to_lowercase();
+        if !w.is_empty() && !list.contains(&w) {
+            list.push(w);
+        }
+    }
+    crate::db::queries::set_setting(conn, DISMISSED_KEY, &serde_json::to_string(&list)?)
+}
+
+fn capitalise(word: &str) -> String {
+    let mut c = word.chars();
+    match c.next() {
+        Some(f) => f.to_uppercase().chain(c).collect(),
+        None => String::new(),
+    }
+}
+
+/// Create a tag for every strong suggestion and apply it. Returns the files whose tags changed.
+pub fn create_from_suggestions(conn: &Connection) -> AppResult<Vec<i64>> {
+    let picks: Vec<TagSuggestion> = suggest(conn, 200)?
+        .into_iter()
+        .filter(|s| s.containers >= AUTO_MIN_CONTAINERS)
+        .collect();
+    let mut n: i64 = conn.query_row("SELECT COUNT(*) FROM tags", [], |r| r.get(0))?;
+    let mut changed: HashSet<i64> = HashSet::new();
+    for s in picks {
+        let colour = COLOURS[(n as usize) % COLOURS.len()];
+        let inserted = conn.execute(
+            "INSERT INTO tags (name, colour, keywords) VALUES (?1, ?2, ?3)
+             ON CONFLICT(name) DO NOTHING",
+            params![capitalise(&s.word), colour, s.word],
+        )?;
+        if inserted == 0 {
+            continue;
+        }
+        n += 1;
+        let id = conn.last_insert_rowid();
+        changed.extend(apply(conn, None, Some(id))?);
+    }
+    Ok(changed.into_iter().collect())
+}
 
 /// Whether scans apply the rules. On unless the user turned it off.
 pub fn enabled_on_index(conn: &Connection) -> AppResult<bool> {
@@ -181,6 +245,7 @@ const STOP_WORDS: &[&str] = &[
 
 /// Words that turn up in many folder and archive names, as starting points for tags.
 pub fn suggest(conn: &Connection, limit: usize) -> AppResult<Vec<TagSuggestion>> {
+    let dismissed: HashSet<String> = dismissed(conn)?.into_iter().collect();
     let existing: HashSet<String> = {
         let mut stmt = conn.prepare("SELECT name, COALESCE(keywords, '') FROM tags")?;
         let rows = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
@@ -207,6 +272,7 @@ pub fn suggest(conn: &Connection, limit: usize) -> AppResult<Vec<TagSuggestion>>
                 || w.chars().all(|c| c.is_ascii_digit())
                 || STOP_WORDS.contains(&w.as_str())
                 || existing.contains(&w)
+                || dismissed.contains(&w)
             {
                 continue;
             }
@@ -288,6 +354,40 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM model_tags", [], |r| r.get(0))
             .expect("count");
         assert_eq!(rows, 1, "the manual tag stays");
+    }
+
+    #[test]
+    fn creates_tags_from_strong_suggestions_and_respects_dismissals() {
+        let conn = crate::db::test_conn();
+        conn.execute_batch(
+            "INSERT INTO libraries (id, name, path) VALUES (1, 'L', '/l');
+             INSERT INTO containers (id, library_id, parent_id, kind, path, name, model_count) VALUES
+               (1, 1, NULL, 'folder', '/l', 'L', 9),
+               (2, 1, 1, 'folder', '/l/Ork Boyz', 'Ork Boyz', 3),
+               (3, 1, 1, 'zip', '/l/b.zip', 'Ork Trukk.zip', 3),
+               (4, 1, 1, 'folder', '/l/c', 'Ork Nobz', 3),
+               (5, 1, 1, 'folder', '/l/d', 'Elf Archers', 3),
+               (6, 1, 1, 'folder', '/l/e', 'Elf Spears', 3);
+             INSERT INTO models (id, container_id, library_id, rel_path, name, ext) VALUES
+               (1, 2, 1, '/l/Ork Boyz/boy.stl', 'boy.stl', 'stl');",
+        )
+        .expect("seed");
+        let changed = create_from_suggestions(&conn).expect("create");
+        // "ork" is in three names, "elf" only two: only Ork becomes a tag.
+        let names: Vec<String> = conn
+            .prepare("SELECT name FROM tags")
+            .and_then(|mut s| s.query_map([], |r| r.get(0))?.collect())
+            .expect("names");
+        assert_eq!(names, vec!["Ork"]);
+        assert_eq!(changed, vec![1]);
+
+        conn.execute("DELETE FROM tags", []).expect("delete");
+        dismiss(&conn, &["ork".to_string()]).expect("dismiss");
+        create_from_suggestions(&conn).expect("create again");
+        let n: i64 = conn
+            .query_row("SELECT COUNT(*) FROM tags", [], |r| r.get(0))
+            .expect("count");
+        assert_eq!(n, 0, "a dismissed word is never created again");
     }
 
     #[test]

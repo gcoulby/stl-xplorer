@@ -2,6 +2,11 @@ import { useQueries, useQueryClient } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   ChevronRight,
+  EyeOff,
+  FolderOpen,
+  FolderSearch,
+  FolderX,
+  Pencil,
   FolderPlus,
   Layers,
   LoaderCircle,
@@ -15,6 +20,7 @@ import {
 } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 
+import { ItemMenuContent } from "@/components/browser/ItemMenu";
 import { ArchiveDirIcon, ContainerIcon } from "@/components/browser/ItemVisuals";
 import { Button } from "@/components/ui/button";
 import { TAG_COLOURS } from "@/components/browser/TagPicker";
@@ -22,6 +28,7 @@ import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
+  ContextMenuLabel,
   ContextMenuSeparator,
   ContextMenuSub,
   ContextMenuSubContent,
@@ -35,15 +42,18 @@ import {
 } from "@/components/ui/menu";
 import { Skeleton } from "@/components/ui/misc";
 import { Tip } from "@/components/ui/overlay";
+import { containerKey, dirKey, type ListItem } from "@/features/listing";
+import { usePacks } from "@/features/packs";
 import {
   browseQuery,
+  invalidateIndex,
   invalidateTags,
   qk,
   useCollections,
   useLibraries,
   useTags,
 } from "@/features/queries";
-import { usePrompt } from "@/features/selection";
+import { describeSelection, usePrompt } from "@/features/selection";
 import { toast } from "@/features/toast";
 import { api, errorMessage } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -200,6 +210,7 @@ function LibraryTree() {
   const expanded = useUi((s) => s.expanded);
   const ref = useRef<HTMLDivElement>(null);
   const [cursor, setCursor] = useState<string | null>(null);
+  const [menuRow, setMenuRow] = useState<TreeRow | null>(null);
   const virt = useVirtualizer({
     count: rows.length,
     getScrollElement: () => ref.current,
@@ -276,52 +287,166 @@ function LibraryTree() {
           </Button>
         </Tip>
       </SectionHeader>
-      <div
-        ref={ref}
-        tabIndex={0}
-        onKeyDown={onKeyDown}
-        onBlur={() => setCursor(null)}
-        className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-2 outline-none"
-      >
-        {libsQ.isLoading ? (
-          <div className="flex flex-col gap-2 p-2">
-            {[60, 45, 70].map((w) => (
-              <Skeleton key={w} className="h-5" style={{ width: `${w}%` }} />
-            ))}
+      <ContextMenu>
+        <ContextMenuTrigger asChild>
+          <div
+            ref={ref}
+            tabIndex={0}
+            onKeyDown={onKeyDown}
+            onBlur={() => setCursor(null)}
+            onContextMenu={(e) => {
+              const key = (e.target as HTMLElement)
+                .closest<HTMLElement>("[data-row-key]")
+                ?.getAttribute("data-row-key");
+              const row = rows.find((r) => r.key === key && r.kind !== "loading");
+              // No row under the pointer: no menu at all, not even the browser's.
+              if (!row) {
+                e.preventDefault();
+                return;
+              }
+              setMenuRow(row);
+            }}
+            className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-2 outline-none"
+          >
+            {libsQ.isLoading ? (
+              <div className="flex flex-col gap-2 p-2">
+                {[60, 45, 70].map((w) => (
+                  <Skeleton key={w} className="h-5" style={{ width: `${w}%` }} />
+                ))}
+              </div>
+            ) : libs.length === 0 ? (
+              <div className="px-2 py-4 text-xs text-muted-foreground">
+                No libraries yet.{" "}
+                <button
+                  className="text-primary hover:underline"
+                  onClick={() => openSettings("libraries")}
+                >
+                  Add one
+                </button>
+              </div>
+            ) : (
+              <div style={{ height: virt.getTotalSize(), position: "relative" }}>
+                {virt.getVirtualItems().map((vr) => {
+                  const r = rows[vr.index];
+                  if (!r) return null;
+                  return (
+                    <TreeRowView
+                      key={r.key}
+                      r={r}
+                      top={vr.start}
+                      active={r.key === activeKey}
+                      cursor={r.key === cursor}
+                      open={expanded.includes(r.key)}
+                      scanning={r.library ? Boolean(scans[r.library.id]) : false}
+                      onToggle={() => toggleExpanded(r.key)}
+                      onGo={() => go(r)}
+                    />
+                  );
+                })}
+              </div>
+            )}
           </div>
-        ) : libs.length === 0 ? (
-          <div className="px-2 py-4 text-xs text-muted-foreground">
-            No libraries yet.{" "}
-            <button
-              className="text-primary hover:underline"
-              onClick={() => openSettings("libraries")}
-            >
-              Add one
-            </button>
-          </div>
-        ) : (
-          <div style={{ height: virt.getTotalSize(), position: "relative" }}>
-            {virt.getVirtualItems().map((vr) => {
-              const r = rows[vr.index];
-              if (!r) return null;
-              return (
-                <TreeRowView
-                  key={r.key}
-                  r={r}
-                  top={vr.start}
-                  active={r.key === activeKey}
-                  cursor={r.key === cursor}
-                  open={expanded.includes(r.key)}
-                  scanning={r.library ? Boolean(scans[r.library.id]) : false}
-                  onToggle={() => toggleExpanded(r.key)}
-                  onGo={() => go(r)}
-                />
-              );
-            })}
-          </div>
-        )}
-      </div>
+        </ContextMenuTrigger>
+        {menuRow && <TreeMenu row={menuRow} onGo={() => go(menuRow)} />}
+      </ContextMenu>
     </div>
+  );
+}
+
+function rowItem(r: TreeRow): ListItem | null {
+  if (r.container)
+    return { key: containerKey(r.container.id), type: "container", container: r.container };
+  if (r.kind === "dir")
+    return {
+      key: dirKey(r.containerId, r.subpath),
+      type: "dir",
+      containerId: r.containerId,
+      dir: {
+        name: r.label,
+        path: r.subpath,
+        modelCount: r.count ?? 0,
+        fileCount: r.count ?? 0,
+        hasChildren: r.expandable,
+      },
+    };
+  return null;
+}
+
+/** Right-click menu for a tree row: the same actions as the file list, plus library ones. */
+function TreeMenu({ row, onGo }: { row: TreeRow; onGo: () => void }) {
+  const item = rowItem(row);
+  if (row.library) return <LibraryMenu lib={row.library} onGo={onGo} />;
+  if (!item) return null;
+  return <ItemMenuContent sel={describeSelection([item])} onActivate={onGo} />;
+}
+
+function LibraryMenu({ lib, onGo }: { lib: Library; onGo: () => void }) {
+  const qc = useQueryClient();
+  const ask = usePrompt((s) => s.ask);
+  const openSettings = useUi((s) => s.openSettings);
+  const findUnpacked = usePacks((s) => s.findUnpacked);
+  const root = lib.rootContainerId;
+  const fail = (title: string) => (e: unknown) => toast.error(title, errorMessage(e));
+  return (
+    <ContextMenuContent className="w-60">
+      <ContextMenuLabel className="truncate">{lib.name}</ContextMenuLabel>
+      {root !== null && (
+        <ContextMenuItem onSelect={onGo}>
+          <FolderOpen /> Open
+        </ContextMenuItem>
+      )}
+      <ContextMenuItem onSelect={() => void api.rescanLibrary(lib.id).catch(fail("Rescan failed"))}>
+        <RefreshCw /> Rescan
+      </ContextMenuItem>
+      {root !== null && (
+        <ContextMenuItem
+          onSelect={() =>
+            void api.revealInFolder({ containerId: root }).catch(fail("Could not show it"))
+          }
+        >
+          <FolderSearch /> Show in folder
+        </ContextMenuItem>
+      )}
+      {root !== null && (
+        <ContextMenuItem onSelect={() => findUnpacked({ id: root, name: lib.name })}>
+          <FolderX /> Find unpacked copies…
+        </ContextMenuItem>
+      )}
+      <ContextMenuSeparator />
+      <ContextMenuItem
+        onSelect={() =>
+          ask({
+            title: "Rename library",
+            initial: lib.name,
+            onSubmit: (name) =>
+              void api
+                .updateLibrary(lib.id, { name })
+                .then(() => invalidateIndex(qc))
+                .catch(fail("Could not rename")),
+          })
+        }
+      >
+        <Pencil /> Rename…
+      </ContextMenuItem>
+      {!lib.isVault && (
+        <ContextMenuItem
+          onSelect={() =>
+            void api
+              .updateLibrary(lib.id, { enabled: false })
+              .then(() => {
+                invalidateIndex(qc);
+                toast.info(`${lib.name} hidden`, "Turn it back on in Settings → Libraries.");
+              })
+              .catch(fail("Could not hide it"))
+          }
+        >
+          <EyeOff /> Hide from the sidebar
+        </ContextMenuItem>
+      )}
+      <ContextMenuItem onSelect={() => openSettings("libraries")}>
+        <Settings2 /> Library settings…
+      </ContextMenuItem>
+    </ContextMenuContent>
   );
 }
 
@@ -358,6 +483,7 @@ function TreeRowView({
   return (
     <div
       onClick={onGo}
+      data-row-key={r.key}
       className={cn(
         "group absolute inset-x-0 flex cursor-default items-center gap-1.5 rounded-md pr-2 text-[13px]",
         "hover:bg-accent/70",

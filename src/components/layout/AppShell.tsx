@@ -19,17 +19,21 @@ function useGlobalShortcuts() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const ui = useUi.getState();
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+      const mod = (e.ctrlKey || e.metaKey) && !e.altKey;
+      // Match the physical key too, so non-QWERTY layouts and odd key values still work.
+      if (mod && (e.code === "KeyK" || e.key.toLowerCase() === "k")) {
         e.preventDefault();
+        e.stopPropagation();
+        if (e.repeat) return;
         ui.setPaletteOpen(!ui.paletteOpen);
         return;
       }
-      if ((e.ctrlKey || e.metaKey) && e.key === ",") {
+      if (mod && (e.key === "," || e.code === "Comma")) {
         e.preventDefault();
         ui.openSettings();
         return;
       }
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "l") {
+      if (mod && (e.code === "KeyL" || e.key.toLowerCase() === "l")) {
         e.preventDefault();
         document
           .querySelector<HTMLButtonElement>("[data-address-bar] button[aria-label='Edit path']")
@@ -47,8 +51,9 @@ function useGlobalShortcuts() {
         ui.back();
       }
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    // Capture phase, so a focused widget that handles keys itself cannot swallow these.
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
   }, []);
 }
 

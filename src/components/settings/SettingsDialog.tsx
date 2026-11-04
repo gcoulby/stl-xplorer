@@ -19,6 +19,7 @@ import {
   Trash2,
   TriangleAlert,
   Wrench,
+  X,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -174,6 +175,7 @@ function TagsTab() {
   const refresh = () => {
     invalidateTags(qc);
     void qc.invalidateQueries({ queryKey: qk.suggestions });
+    void qc.invalidateQueries({ queryKey: qk.settings });
   };
 
   const create = async (tagName: string, kw: string) => {
@@ -238,7 +240,8 @@ function TagsTab() {
       </Section>
       <Section
         title="Suggestions"
-        description="Words that turn up in many of your folder and archive names. Click one to make it an auto tag."
+        description="Words that turn up in many of your folder and archive names. Click one to make it an auto tag, or dismiss it with ×."
+        action={<SuggestionsSwitch />}
       >
         {suggestions.isLoading ? (
           <Skeleton className="h-16" />
@@ -247,23 +250,102 @@ function TagsTab() {
         ) : (
           <div className="flex flex-wrap gap-1.5">
             {(suggestions.data ?? []).map((s) => (
-              <button
+              <span
                 key={s.word}
-                type="button"
-                onClick={() =>
-                  void create(s.word.charAt(0).toUpperCase() + s.word.slice(1), s.word)
-                }
-                className="inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-xs hover:border-primary/50 hover:bg-accent"
+                className="inline-flex h-7 items-center rounded-full border text-xs hover:border-primary/50"
               >
-                <Plus className="size-3 text-muted-foreground" />
-                {s.word}
-                <span className="text-muted-foreground tabular-nums">{s.containers}</span>
-              </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    void create(s.word.charAt(0).toUpperCase() + s.word.slice(1), s.word)
+                  }
+                  className="inline-flex h-full items-center gap-1.5 rounded-l-full pr-1 pl-2.5 hover:bg-accent"
+                >
+                  <Plus className="size-3 text-muted-foreground" />
+                  {s.word}
+                  <span className="text-muted-foreground tabular-nums">{s.containers}</span>
+                </button>
+                <button
+                  type="button"
+                  aria-label={`Dismiss ${s.word}`}
+                  onClick={() =>
+                    void api
+                      .dismissSuggestion(s.word)
+                      .then(refresh)
+                      .catch((e: unknown) => toast.error("Could not dismiss", errorMessage(e)))
+                  }
+                  className="inline-flex h-full items-center rounded-r-full pr-2 pl-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+                >
+                  <X className="size-3" />
+                </button>
+              </span>
             ))}
           </div>
         )}
+        <DismissedNote onChanged={refresh} />
       </Section>
     </>
+  );
+}
+
+function SuggestionsSwitch() {
+  const qc = useQueryClient();
+  const settings = useSettings();
+  const [busy, setBusy] = useState(false);
+  const on = settings.data?.autotagSuggestions ?? false;
+  return (
+    <Label className="flex shrink-0 flex-col items-end gap-1 text-xs font-normal">
+      <span className="flex items-center gap-2 whitespace-nowrap">
+        Create these tags automatically
+        <Switch
+          checked={on}
+          disabled={!settings.data || busy}
+          onCheckedChange={(v) => {
+            setBusy(true);
+            void api
+              .setAutotagSuggestions(v)
+              .then((n) => {
+                invalidateTags(qc);
+                void qc.invalidateQueries({ queryKey: qk.settings });
+                void qc.invalidateQueries({ queryKey: qk.suggestions });
+                if (v) toast.success("Suggested tags created", `${plural(n, "file")} tagged.`);
+              })
+              .catch((e: unknown) => toast.error("Could not save", errorMessage(e)))
+              .finally(() => setBusy(false));
+          }}
+        />
+      </span>
+      <span className="max-w-64 text-right text-[11px] text-muted-foreground">
+        Words in {AUTO_MIN} or more names become tags as you index. Deleted or dismissed ones never
+        come back.
+      </span>
+    </Label>
+  );
+}
+
+/** Matches AUTO_MIN_CONTAINERS in autotag.rs. */
+const AUTO_MIN = 3;
+
+function DismissedNote({ onChanged }: { onChanged: () => void }) {
+  const qc = useQueryClient();
+  const n = useSettings().data?.dismissedSuggestions.length ?? 0;
+  if (n === 0) return null;
+  return (
+    <p className="mt-3 text-xs text-muted-foreground">
+      {plural(n, "word")} dismissed.{" "}
+      <button
+        type="button"
+        className="text-primary hover:underline"
+        onClick={() =>
+          void api.restoreSuggestions().then(() => {
+            void qc.invalidateQueries({ queryKey: qk.settings });
+            onChanged();
+          })
+        }
+      >
+        Suggest them again
+      </button>
+    </p>
   );
 }
 

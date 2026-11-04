@@ -229,6 +229,8 @@ export interface AppSettings {
   missingContainers: number;
   dataDir: string;
   autotagOnIndex: boolean;
+  autotagSuggestions: boolean;
+  dismissedSuggestions: string[];
 }
 
 export interface VaultReport {

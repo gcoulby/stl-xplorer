@@ -274,6 +274,9 @@ pub struct AppSettings {
     pub data_dir: String,
     /// Apply auto-tag rules to new and changed files while indexing.
     pub autotag_on_index: bool,
+    /// Create tags from common folder words automatically.
+    pub autotag_suggestions: bool,
+    pub dismissed_suggestions: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]

@@ -37,7 +37,8 @@ everything up to date while the app is open.
 
 ### Browsing
 
-- The tree on the left shows your libraries, folders and archives. Archives look like folders
+- The tree on the left shows your libraries, folders and archives. Right-click anything in it
+  (or in the list) for its actions. Archives look like folders
   with an amber icon.
 - The middle pane lists what is in the selected folder. Use **Folders** to step through
   subfolders one level at a time, or **All files** to see everything below that point in one
@@ -88,7 +89,10 @@ PDFs in a selection are left out.
   they are indexed.
   - Keywords are separated by commas.
   - A keyword ending in `*` matches the start of a word, so `ork*` also catches orks and orkz.
-  - The suggestions list offers words that crop up across many of your folder names.
+  - The suggestions list offers words that crop up across many of your folder names. Turn on
+    **Create these tags automatically** and any word found in three or more folder or archive
+    names becomes a tag by itself, including as new downloads are indexed. Dismiss a suggestion
+    with × (or delete its tag) and it never comes back.
   - Tags you add by hand are never removed by a rule.
   - Switch off **Tag new files while indexing** to apply rules only when you press **Apply
     rules to everything now**.
