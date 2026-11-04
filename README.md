@@ -8,6 +8,10 @@ unpacking by hand.
 
 Runs on Windows. The code is written to work on macOS too, but that has not been tested yet.
 
+## Download
+
+Get the Windows installer from the [latest release](https://github.com/gcoulby/stl-xplorer/releases/latest). It includes 7-Zip, so 7z and rar archives work straight away. The installer is not code-signed yet, so Windows SmartScreen may warn about an unrecognised app. Choose **More info → Run anyway**.
+
 ## Why it exists
 
 Model packs usually arrive as archives, often split into several parts. Seeing what was in one
@@ -128,17 +132,17 @@ original where it was.
 
 ### Keyboard
 
-| Key            | Action                              |
-| -------------- | ----------------------------------- |
-| ↑ ↓ ← →        | Move through files                  |
-| Space          | Add to or remove from the selection |
-| Enter          | Open in the default slicer          |
-| Backspace      | Up one folder                       |
-| Delete         | Delete (asks first)                 |
-| Ctrl L         | Type a path                         |
-| /              | Search                              |
-| Ctrl K         | Command palette                     |
-| R              | Reset the camera                    |
+| Key       | Action                              |
+| --------- | ----------------------------------- |
+| ↑ ↓ ← →   | Move through files                  |
+| Space     | Add to or remove from the selection |
+| Enter     | Open in the default slicer          |
+| Backspace | Up one folder                       |
+| Delete    | Delete (asks first)                 |
+| Ctrl L    | Type a path                         |
+| /         | Search                              |
+| Ctrl K    | Command palette                     |
+| R         | Reset the camera                    |
 
 ## Building from source
 
@@ -173,6 +177,17 @@ On Windows the sidecar is `7z.exe` together with `7z.dll` (`7za.exe` cannot read
 macOS, use the standalone `7zz` from 7-zip.org: `pnpm setup:7zip /path/to/7zz`. 7-Zip is
 licensed under the LGPL with the unRAR restriction. Its licence is in
 [licences/7-Zip-License.txt](licences/7-Zip-License.txt).
+
+### Releasing
+
+Pushing a version tag builds the Windows installers on GitHub Actions (with 7-Zip bundled) and
+publishes them as a release. Bump the version in `package.json`, `src-tauri/Cargo.toml` and
+`src-tauri/tauri.conf.json` first.
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
 
 ### Checks
 
