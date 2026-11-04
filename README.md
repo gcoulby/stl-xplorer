@@ -12,6 +12,8 @@ Runs on Windows. The code is written to work on macOS too, but that has not been
 
 Get the Windows installer from the [latest release](https://github.com/gcoulby/stl-xplorer/releases/latest). It includes 7-Zip, so 7z and rar archives work straight away. The installer is not code-signed yet, so Windows SmartScreen may warn about an unrecognised app. Choose **More info → Run anyway**.
 
+After that, STL Xplorer checks GitHub for new versions on startup and offers to install them. You can turn this off, or check by hand, in **Settings → Maintenance → Updates**. Version 0.1.0 came out before the updater existed, so install 0.2.0 by hand once.
+
 ## Why it exists
 
 Model packs usually arrive as archives, often split into several parts. Seeing what was in one
@@ -185,9 +187,20 @@ publishes them as a release. Bump the version in `package.json`, `src-tauri/Carg
 `src-tauri/tauri.conf.json` first.
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.2.0
+git push origin v0.2.0
 ```
+
+Releases are signed for the in-app updater, which checks
+`releases/latest/download/latest.json` and refuses anything not signed by the key whose public half
+is in `tauri.conf.json`. The workflow needs two repository secrets (Settings → Secrets and
+variables → Actions):
+
+- `TAURI_SIGNING_PRIVATE_KEY`: the contents of the private key file
+- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`: its password
+
+Keep the private key safe. If it is lost, installed copies cannot be updated automatically any
+more and have to be reinstalled by hand.
 
 ### Checks
 

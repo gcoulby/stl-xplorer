@@ -49,9 +49,14 @@ jobs:
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Signs the installer so the in-app updater can trust it. See "Releasing" in the README.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           # NSIS only: WiX's candle.exe (needed for .msi) does not run on the current runner image.
-          args: --config src-tauri/tauri.7zip.conf.json --bundles nsis
+          # tauri.release.conf.json turns on signed updater artifacts; tauri-action then uploads latest.json.
+          args: --config src-tauri/tauri.7zip.conf.json --config src-tauri/tauri.release.conf.json --bundles nsis
+          includeUpdaterJson: true
           tagName: ${{ github.ref_name }}
           releaseName: STL Xplorer ${{ github.ref_name }}
           releaseDraft: false
@@ -62,6 +67,8 @@ jobs:
             ## Install (Windows)
 
             Download **`STL.Xplorer_*_x64-setup.exe`** below and run it. 7-Zip is included, so 7z and rar archives work straight away.
+
+            Already installed? STL Xplorer finds new versions itself (Settings → Maintenance → Updates), so you only need this download once.
 
             The installer is not code-signed yet, so Windows SmartScreen may warn about an unrecognised app. Choose **More info → Run anyway**.
 

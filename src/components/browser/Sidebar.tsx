@@ -642,6 +642,7 @@ function TagsSection() {
   const tags = useTags().data ?? [];
   const loc = useUi((s) => s.location);
   const navigate = useUi((s) => s.navigate);
+  const toggleTag = useUi((s) => s.toggleTag);
   const openSettings = useUi((s) => s.openSettings);
   const ask = usePrompt((s) => s.ask);
   return (
@@ -685,7 +686,8 @@ function TagsSection() {
               <ContextMenuTrigger asChild>
                 <button
                   type="button"
-                  onClick={() => navigate({ kind: "tag", tagId: t.id })}
+                  aria-pressed={active}
+                  onClick={() => toggleTag(t.id)}
                   className={cn(
                     "inline-flex h-6 items-center gap-1.5 rounded-full border px-2 text-xs hover:bg-accent",
                     active && "border-primary/60 bg-primary/15",

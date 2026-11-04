@@ -1,6 +1,7 @@
-import { CircleCheck, LoaderCircle, TriangleAlert } from "lucide-react";
+import { ArrowDownToLine, CircleCheck, LoaderCircle, TriangleAlert } from "lucide-react";
 
 import { useLibraries, useSevenZip } from "@/features/queries";
+import { useUpdater } from "@/features/updater";
 import { plural } from "@/lib/utils";
 import { useUi } from "@/store/ui";
 
@@ -12,6 +13,8 @@ export function StatusBar() {
   const navigate = useUi((s) => s.navigate);
   const active = Object.values(scans);
   const pack = useUi((s) => s.packJob);
+  const update = useUpdater((s) => s.status);
+  const openUpdate = useUpdater((s) => s.setDialogOpen);
   const total = libs.filter((l) => l.enabled).reduce((n, l) => n + l.modelCount, 0);
   const issues = libs.filter((l) => l.enabled).reduce((n, l) => n + l.issueCount, 0);
 
@@ -67,6 +70,16 @@ export function StatusBar() {
         >
           <TriangleAlert className="size-3" />
           7-Zip not found: 7z and rar archives are unavailable
+        </button>
+      )}
+      {(update.kind === "available" || update.kind === "downloading") && (
+        <button
+          type="button"
+          onClick={() => openUpdate(true)}
+          className="flex items-center gap-1 text-primary hover:underline"
+        >
+          <ArrowDownToLine className="size-3" />
+          Update available: {update.update.version}
         </button>
       )}
       <span className="hidden sm:inline">

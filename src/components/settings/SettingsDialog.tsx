@@ -19,9 +19,10 @@ import {
   Trash2,
   TriangleAlert,
   Wrench,
+  ArrowDownToLine,
   X,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -53,6 +54,7 @@ import {
   useTags,
 } from "@/features/queries";
 import { toast } from "@/features/toast";
+import { appVersion, useUpdater } from "@/features/updater";
 import { api, errorMessage } from "@/lib/api";
 import {
   cn,
@@ -1052,12 +1054,57 @@ function AppearanceTab() {
   );
 }
 
+function UpdatesSection() {
+  const { status, autoCheck, setAutoCheck, check, setDialogOpen } = useUpdater();
+  const [version, setVersion] = useState<string | null>(null);
+  useEffect(() => {
+    void appVersion().then(setVersion);
+  }, []);
+  const checking = status.kind === "checking";
+  return (
+    <Section
+      title="Updates"
+      description={`You have version ${version ?? "…"}. New versions come from the project's GitHub releases.`}
+      action={
+        <Label className="flex shrink-0 items-center gap-2 text-xs font-normal whitespace-nowrap">
+          Check on startup
+          <Switch checked={autoCheck} onCheckedChange={setAutoCheck} />
+        </Label>
+      }
+    >
+      <div className="flex items-center gap-3">
+        {status.kind === "available" || status.kind === "downloading" ? (
+          <Button onClick={() => setDialogOpen(true)}>
+            <ArrowDownToLine /> Install {status.update.version}
+          </Button>
+        ) : (
+          <Button variant="outline" disabled={checking} onClick={() => void check()}>
+            <RefreshCw className={cn(checking && "animate-spin")} /> Check for updates
+          </Button>
+        )}
+        <p className="text-xs text-muted-foreground">
+          {status.kind === "checking"
+            ? "Checking…"
+            : status.kind === "current"
+              ? "You're on the latest version."
+              : status.kind === "available"
+                ? `Version ${status.update.version} is ready to install.`
+                : status.kind === "error"
+                  ? status.message
+                  : ""}
+        </p>
+      </div>
+    </Section>
+  );
+}
+
 function MaintenanceTab() {
   const qc = useQueryClient();
   const settings = useSettings();
   const missing = (settings.data?.missingModels ?? 0) + (settings.data?.missingContainers ?? 0);
   return (
     <>
+      <UpdatesSection />
       <Section
         title="Missing files"
         description="When files disappear they are kept in the index, so tags and orientation come back if the folder returns. Clean up to forget them for good."

@@ -70,6 +70,7 @@ fn setup(app: &tauri::App) -> AppResult<()> {
 pub fn run() {
     let result = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .register_asynchronous_uri_scheme_protocol(protocol::SCHEME, |ctx, request, responder| {
             let app = ctx.app_handle().clone();
             // Decompression can take a while; keep it off the webview's thread.

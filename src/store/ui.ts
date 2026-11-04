@@ -78,6 +78,8 @@ interface UiState {
   scans: Record<number, ScanProgress>;
 
   navigate: (loc: Location) => void;
+  /** Show a tag, or leave it when it is already showing. */
+  toggleTag: (tagId: number) => void;
   back: () => void;
   setSearchText: (q: string) => void;
   setSelection: (keys: string[], anchor?: string | null) => void;
@@ -138,6 +140,27 @@ export const useUi = create<UiState>()(
               ? get().history
               : [...get().history.slice(-49), cur],
           searchText: isSearch ? loc.query : "",
+          selection: [],
+          anchor: null,
+          focused: null,
+        });
+      },
+      toggleTag: (tagId) => {
+        const cur = get().location;
+        if (cur.kind !== "tag" || cur.tagId !== tagId) {
+          get().navigate({ kind: "tag", tagId });
+          return;
+        }
+        // Return to wherever the user was before they started picking tags.
+        const h = get().history;
+        let i = h.length - 1;
+        while (i >= 0 && h[i]?.kind === "tag") i--;
+        const prev: Location = h[i] ?? { kind: "none" };
+        set({
+          location: prev,
+          lastBrowse: prev,
+          history: h.slice(0, Math.max(i, 0)),
+          searchText: "",
           selection: [],
           anchor: null,
           focused: null,
