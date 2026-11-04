@@ -46,12 +46,25 @@ jobs:
       - name: Bundle 7-Zip
         run: pnpm setup:7zip
 
+      # Pasting a secret into GitHub often keeps a trailing newline, which the key decoder rejects.
+      # Both values are single tokens (base64 and hex), so stripping all whitespace is safe.
+      - name: Load signing key
+        shell: bash
+        env:
+          KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          key=$(printf %s "$KEY" | tr -d '[:space:]')
+          password=$(printf %s "$PASSWORD" | tr -d '[:space:]')
+          if [ -z "$key" ]; then echo "::error::TAURI_SIGNING_PRIVATE_KEY secret is not set"; exit 1; fi
+          echo "::add-mask::$key"
+          echo "::add-mask::$password"
+          echo "TAURI_SIGNING_PRIVATE_KEY=$key" >> "$GITHUB_ENV"
+          echo "TAURI_SIGNING_PRIVATE_KEY_PASSWORD=$password" >> "$GITHUB_ENV"
+
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Signs the installer so the in-app updater can trust it. See "Releasing" in the README.
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           # NSIS only: WiX's candle.exe (needed for .msi) does not run on the current runner image.
           # tauri.release.conf.json turns on signed updater artifacts; tauri-action then uploads latest.json.
