@@ -1,4 +1,4 @@
-# Builds the Windows installers and publishes a GitHub release when a version tag is pushed:
+# Builds the Windows installer and publishes a GitHub release when a version tag is pushed:
 #
 #   git tag v0.1.0 && git push origin v0.1.0
 #
@@ -50,7 +50,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          args: --config src-tauri/tauri.7zip.conf.json
+          # NSIS only: WiX's candle.exe (needed for .msi) does not run on the current runner image.
+          args: --config src-tauri/tauri.7zip.conf.json --bundles nsis
           tagName: ${{ github.ref_name }}
           releaseName: STL Xplorer ${{ github.ref_name }}
           releaseDraft: false
@@ -60,7 +61,7 @@ jobs:
 
             ## Install (Windows)
 
-            Download **`STL.Xplorer_*_x64-setup.exe`** (or the `.msi`) below and run it. 7-Zip is included, so 7z and rar archives work straight away.
+            Download **`STL.Xplorer_*_x64-setup.exe`** below and run it. 7-Zip is included, so 7z and rar archives work straight away.
 
             The installer is not code-signed yet, so Windows SmartScreen may warn about an unrecognised app. Choose **More info → Run anyway**.
 
