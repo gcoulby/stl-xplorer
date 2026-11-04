@@ -21,10 +21,19 @@ pub fn handle(app: &AppHandle, request: &Request<Vec<u8>>) -> Response<Vec<u8>> 
         return error_response(&AppError::Invalid("bad mesh URL".into()));
     };
     let st = app.state::<AppState>();
+    let ext: String = st
+        .db
+        .lock()
+        .ok()
+        .and_then(|c| {
+            c.query_row("SELECT ext FROM models WHERE id = ?1", [id], |r| r.get(0))
+                .ok()
+        })
+        .unwrap_or_default();
     match crate::preview::model_bytes(app, &st, id) {
         Ok(bytes) => Response::builder()
             .status(StatusCode::OK)
-            .header("Content-Type", "application/octet-stream")
+            .header("Content-Type", crate::util::content_type(&ext))
             .header("Access-Control-Allow-Origin", "*")
             .header("Cache-Control", "no-store")
             .body(bytes.as_ref().clone())

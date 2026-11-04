@@ -4,6 +4,7 @@ import { Group, Panel, Separator, useDefaultLayout } from "react-resizable-panel
 import { FileList } from "@/components/browser/FileList";
 import { Sidebar } from "@/components/browser/Sidebar";
 import { CommandPalette } from "@/components/layout/CommandPalette";
+import { DeleteDialog } from "@/components/layout/DeleteDialog";
 import { PromptDialog } from "@/components/layout/PromptDialog";
 import { StatusBar } from "@/components/layout/StatusBar";
 import { Toaster } from "@/components/layout/Toaster";
@@ -71,6 +72,7 @@ export function AppShell() {
       <CommandPalette />
       <SettingsDialog />
       <PromptDialog />
+      <DeleteDialog />
       <Toaster />
     </div>
   );

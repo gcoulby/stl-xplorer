@@ -4,13 +4,15 @@ use tauri::AppHandle;
 use super::blocking;
 use crate::db::queries::{self, CONTAINER_COLS, MODEL_COLS};
 use crate::error::{AppError, AppResult};
-use crate::types::{Collection, ContainerInfo, Tag, TaggedItems};
+use crate::types::{Collection, ContainerInfo, Tag, TagSuggestion, TaggedItems};
 
 fn list_tags_impl(conn: &Connection) -> AppResult<Vec<Tag>> {
     let mut stmt = conn.prepare(
         "SELECT t.id, t.name, t.colour,
            (SELECT COUNT(*) FROM model_tags WHERE tag_id = t.id) +
-           (SELECT COUNT(*) FROM container_tags WHERE tag_id = t.id)
+           (SELECT COUNT(*) FROM container_tags WHERE tag_id = t.id),
+           (SELECT COUNT(*) FROM model_tags WHERE tag_id = t.id AND auto = 1),
+           t.keywords
          FROM tags t ORDER BY t.name COLLATE NOCASE",
     )?;
     let rows = stmt.query_map([], |r| {
@@ -19,6 +21,8 @@ fn list_tags_impl(conn: &Connection) -> AppResult<Vec<Tag>> {
             name: r.get(1)?,
             colour: r.get(2)?,
             usage: r.get(3)?,
+            auto_usage: r.get(4)?,
+            keywords: r.get(5)?,
         })
     })?;
     Ok(rows.collect::<Result<_, _>>()?)
@@ -39,24 +43,45 @@ pub async fn list_tags(app: AppHandle) -> AppResult<Vec<Tag>> {
 }
 
 #[tauri::command]
-pub async fn create_tag(app: AppHandle, name: String, colour: Option<String>) -> AppResult<Tag> {
+pub async fn create_tag(
+    app: AppHandle,
+    name: String,
+    colour: Option<String>,
+    keywords: Option<String>,
+) -> AppResult<Tag> {
     blocking(app, move |_, st| {
         let name = name.trim().to_string();
         if name.is_empty() {
             return Err(AppError::Invalid("Tag name cannot be empty".into()));
         }
-        let conn = st.db.lock()?;
-        conn.execute(
-            "INSERT INTO tags (name, colour) VALUES (?1, COALESCE(?2, '#64748b'))
-             ON CONFLICT(name) DO NOTHING",
-            params![name, colour],
+        let keywords = clean_keywords(keywords);
+        let mut conn = st.db.lock()?;
+        let tx = conn.transaction()?;
+        tx.execute(
+            "INSERT INTO tags (name, colour, keywords) VALUES (?1, COALESCE(?2, '#64748b'), ?3)
+             ON CONFLICT(name) DO UPDATE SET keywords = COALESCE(excluded.keywords, keywords)",
+            params![name, colour, keywords],
         )?;
+        let id: i64 = tx.query_row(
+            "SELECT id FROM tags WHERE name = ?1 COLLATE NOCASE",
+            [&name],
+            |r| r.get(0),
+        )?;
+        if keywords.is_some() {
+            let changed = crate::autotag::apply(&tx, None, Some(id))?;
+            queries::refresh_fts(&tx, &changed)?;
+        }
+        tx.commit()?;
         list_tags_impl(&conn)?
             .into_iter()
             .find(|t| t.name.eq_ignore_ascii_case(&name))
             .ok_or_else(|| AppError::Other("tag was not created".into()))
     })
     .await
+}
+
+fn clean_keywords(k: Option<String>) -> Option<String> {
+    k.map(|k| k.trim().to_string()).filter(|k| !k.is_empty())
 }
 
 fn refresh_for_tag(conn: &Connection, tag_id: i64) -> AppResult<()> {
@@ -77,10 +102,20 @@ pub async fn update_tag(
     id: i64,
     name: Option<String>,
     colour: Option<String>,
+    keywords: Option<String>,
 ) -> AppResult<Vec<Tag>> {
     blocking(app, move |_, st| {
         let mut conn = st.db.lock()?;
         let tx = conn.transaction()?;
+        // Some("") clears the rule, None leaves it alone.
+        if let Some(k) = keywords {
+            tx.execute(
+                "UPDATE tags SET keywords = ?2 WHERE id = ?1",
+                params![id, clean_keywords(Some(k))],
+            )?;
+            let changed = crate::autotag::apply(&tx, None, Some(id))?;
+            queries::refresh_fts(&tx, &changed)?;
+        }
         if let Some(n) = name.map(|n| n.trim().to_string()).filter(|n| !n.is_empty()) {
             tx.execute("UPDATE tags SET name = ?2 WHERE id = ?1", params![id, n])?;
             refresh_for_tag(&tx, id)?;
@@ -127,8 +162,10 @@ pub async fn tag_items(
         let tx = conn.transaction()?;
         for id in &model_ids {
             if add {
+                // Tagging by hand makes the tag stick even if a rule later stops matching.
                 tx.execute(
-                    "INSERT OR IGNORE INTO model_tags VALUES (?1, ?2)",
+                    "INSERT INTO model_tags (model_id, tag_id, auto) VALUES (?1, ?2, 0)
+                     ON CONFLICT (model_id, tag_id) DO UPDATE SET auto = 0",
                     params![id, tag_id],
                 )?;
             } else {
@@ -141,7 +178,7 @@ pub async fn tag_items(
         for id in &container_ids {
             if add {
                 tx.execute(
-                    "INSERT OR IGNORE INTO container_tags VALUES (?1, ?2)",
+                    "INSERT OR IGNORE INTO container_tags (container_id, tag_id) VALUES (?1, ?2)",
                     params![id, tag_id],
                 )?;
             } else {
@@ -181,6 +218,11 @@ pub async fn tagged_items(app: AppHandle, tag_id: i64) -> AppResult<TaggedItems>
         Ok(TaggedItems { containers, models })
     })
     .await
+}
+
+#[tauri::command]
+pub async fn suggest_tags(app: AppHandle) -> AppResult<Vec<TagSuggestion>> {
+    blocking(app, |_, st| crate::autotag::suggest(&*st.db.lock()?, 40)).await
 }
 
 fn list_collections_impl(conn: &Connection) -> AppResult<Vec<Collection>> {

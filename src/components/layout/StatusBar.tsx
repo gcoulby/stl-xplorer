@@ -9,6 +9,7 @@ export function StatusBar() {
   const libs = useLibraries().data ?? [];
   const sz = useSevenZip().data;
   const openSettings = useUi((s) => s.openSettings);
+  const navigate = useUi((s) => s.navigate);
   const active = Object.values(scans);
   const total = libs.filter((l) => l.enabled).reduce((n, l) => n + l.modelCount, 0);
   const issues = libs.filter((l) => l.enabled).reduce((n, l) => n + l.issueCount, 0);
@@ -38,10 +39,14 @@ export function StatusBar() {
       )}
       <span className="tabular-nums">{plural(total, "model")}</span>
       {issues > 0 && (
-        <span className="flex items-center gap-1 text-warning">
+        <button
+          type="button"
+          onClick={() => navigate({ kind: "problems" })}
+          className="flex items-center gap-1 text-warning hover:underline"
+        >
           <TriangleAlert className="size-3" />
           {plural(issues, "archive")} {issues === 1 ? "needs" : "need"} attention
-        </span>
+        </button>
       )}
       <div className="flex-1" />
       {sz && !sz.path && (

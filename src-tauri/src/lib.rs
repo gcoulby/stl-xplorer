@@ -1,4 +1,5 @@
 mod archive;
+mod autotag;
 mod commands;
 mod db;
 mod error;
@@ -114,6 +115,12 @@ pub fn run() {
             commands::tags::delete_tag,
             commands::tags::tag_items,
             commands::tags::tagged_items,
+            commands::tags::suggest_tags,
+            commands::index::problem_archives,
+            commands::index::archive_problem,
+            commands::files::reveal_in_folder,
+            commands::files::open_externally,
+            commands::delete::delete_items,
             commands::tags::list_collections,
             commands::tags::create_collection,
             commands::tags::rename_collection,

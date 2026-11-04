@@ -50,6 +50,8 @@ pub struct ContainerInfo {
     pub has_children: bool,
     pub tag_ids: Vec<i64>,
     pub rotation: Option<Rotation>,
+    /// Every indexed file below this container, images and PDFs included.
+    pub file_count: i64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -78,6 +80,7 @@ pub struct VirtualDir {
     pub name: String,
     pub path: String,
     pub model_count: i64,
+    pub file_count: i64,
     pub has_children: bool,
 }
 
@@ -99,6 +102,10 @@ pub struct BrowseResult {
     pub dirs: Vec<VirtualDir>,
     pub containers: Vec<ContainerInfo>,
     pub models: Vec<ModelInfo>,
+    /// Set in flat mode: every file below this point, with where each one sits.
+    pub flat: bool,
+    /// One entry per model in flat mode, relative to the browsed location. Empty otherwise.
+    pub locations: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -127,6 +134,30 @@ pub struct Tag {
     pub name: String,
     pub colour: String,
     pub usage: i64,
+    /// How many of `usage` came from the keyword rule rather than by hand.
+    pub auto_usage: i64,
+    /// Comma separated keywords. A trailing `*` matches word prefixes.
+    pub keywords: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TagSuggestion {
+    pub word: String,
+    /// Folders and archives whose name contains the word.
+    pub containers: i64,
+    pub models: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProblemArchive {
+    pub container: ContainerInfo,
+    pub library_name: String,
+    /// Folder the archive sits in.
+    pub folder: String,
+    /// File names of the parts that were found.
+    pub parts: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -247,5 +278,12 @@ pub struct AppSettings {
 #[serde(rename_all = "camelCase")]
 pub struct VaultReport {
     pub moved: Vec<String>,
+    pub errors: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeleteReport {
+    pub deleted: Vec<String>,
     pub errors: Vec<String>,
 }

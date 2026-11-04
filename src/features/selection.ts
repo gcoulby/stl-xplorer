@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { create } from "zustand";
 
 import type { ListItem } from "@/features/listing";
+import { isMesh } from "@/lib/utils";
 import { useUi } from "@/store/ui";
 
 export interface SelectedInfo {
@@ -9,7 +10,7 @@ export interface SelectedInfo {
   modelIds: number[];
   containerIds: number[];
   folderIds: number[];
-  /** Models that can be sent to a slicer. */
+  /** Meshes that can be sent to a slicer. Images and PDFs are left out. */
   openableIds: number[];
   vaultable: boolean;
   tagIdsPerItem: number[][];
@@ -26,7 +27,7 @@ export function describeSelection(items: ListItem[]): SelectedInfo {
     if (it.type === "model") {
       modelIds.push(it.model.id);
       tagIdsPerItem.push(it.model.tagIds);
-      if (!it.model.encrypted) openableIds.push(it.model.id);
+      if (!it.model.encrypted && isMesh(it.model.ext)) openableIds.push(it.model.id);
       if (!it.model.vaulted) vaultable = true;
     } else if (it.type === "container") {
       containerIds.push(it.container.id);

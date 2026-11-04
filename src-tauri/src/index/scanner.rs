@@ -17,7 +17,7 @@ use crate::db::queries;
 use crate::error::{AppError, AppResult, ArchiveFailure};
 use crate::types::ScanProgress;
 use crate::util::{
-    ext_of, is_in_progress_download, is_mesh_name, mtime_secs, now_secs, path_str, Cancel,
+    ext_of, is_in_progress_download, is_indexed_name, mtime_secs, now_secs, path_str, Cancel,
 };
 
 /// Archive parts newer than this are assumed to still be downloading.
@@ -150,13 +150,21 @@ pub fn scan_library_with(
     let mut changed = std::mem::take(&mut scan.changed_models);
     changed.sort_unstable();
     changed.dedup();
-    queries::refresh_fts(&tx, &changed)?;
+    let retagged = crate::autotag::apply(&tx, Some(&changed), None)?;
+    let mut fts_ids = changed.clone();
+    fts_ids.extend(retagged);
+    fts_ids.sort_unstable();
+    fts_ids.dedup();
+    queries::refresh_fts(&tx, &fts_ids)?;
     tx.execute(
         "UPDATE libraries SET last_scanned_at = ?2 WHERE id = ?1",
         params![lib.id, scan.now],
     )?;
     scan.out.models = tx.query_row(
-        "SELECT COUNT(*) FROM models WHERE library_id = ?1 AND missing = 0",
+        &format!(
+            "SELECT COUNT(*) FROM models WHERE library_id = ?1 AND missing = 0 AND ext IN {}",
+            crate::util::MESH_EXTS_SQL
+        ),
         [lib.id],
         |r| r.get::<_, i64>(0),
     )? as u64;
@@ -302,7 +310,7 @@ impl Scan<'_> {
                 .file_name()
                 .map(|n| n.to_string_lossy().into_owned())
                 .unwrap_or_default();
-            if !is_mesh_name(&name) {
+            if !is_indexed_name(&name) {
                 continue;
             }
             let Some(m) = meta.get(f.as_path()) else {
@@ -525,7 +533,7 @@ impl Scan<'_> {
                 continue;
             }
             let name = rel.rsplit('/').next().unwrap_or(rel);
-            if !is_mesh_name(name) {
+            if !is_indexed_name(name) {
                 continue;
             }
             let id: i64 = upsert.query_row(
@@ -723,8 +731,14 @@ mod tests {
         std::fs::write(dir.path().join("half.zip.crdownload"), b"x").expect("write");
         write_zip(
             &dir.path().join("pack.zip"),
-            &[("a/one.stl", b"1"), ("two.3mf", b"2"), ("x.txt", b"3")],
+            &[
+                ("a/one.stl", b"1"),
+                ("two.3mf", b"2"),
+                ("x.txt", b"3"),
+                ("img/render.jpg", b"4"),
+            ],
         );
+        std::fs::write(dir.path().join("guide.pdf"), b"%PDF").expect("write");
 
         let (mut conn, lib) = setup(dir.path());
         let out = scan(&mut conn, &lib);
@@ -737,7 +751,12 @@ mod tests {
             &conn,
             "SELECT model_count FROM containers WHERE parent_id IS NULL",
         );
-        assert_eq!(root_count, 3);
+        assert_eq!(root_count, 3, "images and PDFs are not models");
+        let root_files = count(
+            &conn,
+            "SELECT file_count FROM containers WHERE parent_id IS NULL",
+        );
+        assert_eq!(root_files, 5, "but they are indexed");
         // search rows were written
         assert_eq!(
             count(

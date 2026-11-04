@@ -46,6 +46,8 @@ export interface ContainerInfo {
   hasChildren: boolean;
   tagIds: number[];
   rotation: Rotation | null;
+  /** Every indexed file below this container, images and PDFs included. */
+  fileCount: number;
 }
 
 export interface ModelInfo {
@@ -70,6 +72,7 @@ export interface VirtualDir {
   name: string;
   path: string;
   modelCount: number;
+  fileCount: number;
   hasChildren: boolean;
 }
 
@@ -87,6 +90,9 @@ export interface BrowseResult {
   dirs: VirtualDir[];
   containers: ContainerInfo[];
   models: ModelInfo[];
+  flat: boolean;
+  /** Flat mode only: where each model sits, relative to the browsed location. */
+  locations: string[];
 }
 
 export type RotationSource = "model" | "pack" | "global" | "none";
@@ -110,6 +116,21 @@ export interface Tag {
   name: string;
   colour: string;
   usage: number;
+  autoUsage: number;
+  keywords: string | null;
+}
+
+export interface TagSuggestion {
+  word: string;
+  containers: number;
+  models: number;
+}
+
+export interface ProblemArchive {
+  container: ContainerInfo;
+  libraryName: string;
+  folder: string;
+  parts: string[];
 }
 
 export interface Collection {
@@ -211,6 +232,11 @@ export interface AppSettings {
 
 export interface VaultReport {
   moved: string[];
+  errors: string[];
+}
+
+export interface DeleteReport {
+  deleted: string[];
   errors: string[];
 }
 

@@ -8,12 +8,21 @@ export type Location =
   | { kind: "container"; containerId: number; subpath: string }
   | { kind: "search"; query: string }
   | { kind: "collection"; collectionId: number }
-  | { kind: "tag"; tagId: number };
+  | { kind: "tag"; tagId: number }
+  | { kind: "tags" }
+  | { kind: "problems" };
 
 export type Theme = "dark" | "light" | "system";
 export type ViewMode = "list" | "grid";
 export type SettingsTab =
-  "libraries" | "slicers" | "archives" | "orientation" | "vault" | "appearance" | "maintenance";
+  | "libraries"
+  | "slicers"
+  | "archives"
+  | "tags"
+  | "orientation"
+  | "vault"
+  | "appearance"
+  | "maintenance";
 
 export function treeKey(containerId: number, subpath: string): string {
   return `${containerId}:${subpath}`;
@@ -34,6 +43,8 @@ interface UiState {
 
   expanded: string[];
   viewMode: ViewMode;
+  /** Show every file below a folder or archive in one list instead of its subfolders. */
+  flat: boolean;
   theme: Theme;
 
   settingsOpen: boolean;
@@ -50,6 +61,7 @@ interface UiState {
   setPreview: (id: number | null) => void;
   toggleExpanded: (key: string, open?: boolean) => void;
   setViewMode: (m: ViewMode) => void;
+  setFlat: (flat: boolean) => void;
   setTheme: (t: Theme) => void;
   openSettings: (tab?: SettingsTab) => void;
   closeSettings: () => void;
@@ -75,6 +87,7 @@ export const useUi = create<UiState>()(
       previewModelId: null,
       expanded: [],
       viewMode: "list",
+      flat: false,
       theme: "dark",
       settingsOpen: false,
       settingsTab: "libraries",
@@ -141,6 +154,7 @@ export const useUi = create<UiState>()(
         set({ expanded: want ? [...cur, key] : cur.filter((k) => k !== key) });
       },
       setViewMode: (m) => set({ viewMode: m }),
+      setFlat: (flat) => set({ flat, selection: [], anchor: null, focused: null }),
       setTheme: (t) => set({ theme: t }),
       openSettings: (tab) => set({ settingsOpen: true, ...(tab ? { settingsTab: tab } : {}) }),
       closeSettings: () => set({ settingsOpen: false }),
@@ -160,6 +174,7 @@ export const useUi = create<UiState>()(
         lastBrowse: s.lastBrowse,
         expanded: s.expanded,
         viewMode: s.viewMode,
+        flat: s.flat,
         theme: s.theme,
       }),
     },

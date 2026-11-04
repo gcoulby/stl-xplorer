@@ -1,3 +1,5 @@
+pub mod delete;
+pub mod files;
 pub mod index;
 pub mod library;
 pub mod mesh;

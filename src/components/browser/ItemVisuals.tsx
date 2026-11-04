@@ -2,8 +2,10 @@ import {
   Box,
   FileArchive,
   FileBox,
+  FileText,
   Folder,
   FolderArchive,
+  Image as ImageIcon,
   FolderClosed,
   Layers,
   Library as LibraryIcon,
@@ -17,7 +19,7 @@ import {
 import { Badge } from "@/components/ui/misc";
 import { Tip } from "@/components/ui/overlay";
 import { useTags } from "@/features/queries";
-import { cn } from "@/lib/utils";
+import { cn, fileKind } from "@/lib/utils";
 import type { ContainerInfo, ModelInfo } from "@/types";
 
 export function ContainerIcon({
@@ -50,6 +52,9 @@ export function ModelIcon({ ext, className }: { ext: string; className?: string 
   const cls = cn("size-4 shrink-0", className);
   if (ext === "stl") return <Box className={cn(cls, "text-primary")} />;
   if (ext === "3mf") return <FileBox className={cn(cls, "text-emerald-400")} />;
+  const kind = fileKind(ext);
+  if (kind === "image") return <ImageIcon className={cn(cls, "text-teal-400")} />;
+  if (kind === "pdf") return <FileText className={cn(cls, "text-rose-400")} />;
   return <Layers className={cn(cls, "text-pink-400")} />;
 }
 

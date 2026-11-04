@@ -4,18 +4,21 @@ import type * as THREE from "three";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 
 import { api, meshUrl } from "@/lib/api";
+import { fileKind } from "@/lib/utils";
 import type { AppErrorPayload, UnpackProgress } from "@/types";
 
-export type MeshState =
+export type PreviewState =
   | { status: "idle" }
   | { status: "loading"; unpack: number | null }
   | { status: "ready"; geometry: THREE.BufferGeometry; bytes: number }
+  | { status: "file"; url: string; kind: "image" | "pdf"; bytes: number }
   | { status: "unsupported"; ext: string }
   | { status: "error"; kind: string; message: string };
 
 type Fetched =
   | { status: "unpacking"; percent: number }
   | { status: "ready"; geometry: THREE.BufferGeometry; bytes: number }
+  | { status: "file"; url: string; kind: "image" | "pdf"; bytes: number }
   | { status: "error"; kind: string; message: string };
 
 async function readError(res: Response): Promise<AppErrorPayload> {
@@ -28,20 +31,49 @@ async function readError(res: Response): Promise<AppErrorPayload> {
   return { kind: "other", message: `Preview failed (${res.status})` };
 }
 
-/** Fetch and parse a model's mesh through the mesh:// scheme. */
-export function useMesh(
+const MIME: Record<string, string> = {
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  webp: "image/webp",
+  gif: "image/gif",
+  bmp: "image/bmp",
+  pdf: "application/pdf",
+};
+
+function previewable(ext: string): boolean {
+  return ext === "stl" || fileKind(ext) !== "mesh";
+}
+
+function parseStl(buf: ArrayBuffer): THREE.BufferGeometry {
+  const geometry = new STLLoader().parse(buf);
+  // Many exporters write zero or wrong facet normals, which renders the model black or
+  // patchy. Work them out from the triangles instead of trusting the file.
+  geometry.deleteAttribute("normal");
+  geometry.computeVertexNormals();
+  geometry.computeBoundingBox();
+  geometry.center();
+  return geometry;
+}
+
+/**
+ * Fetch a file through the mesh:// scheme. STL comes back as geometry, images and PDFs as a
+ * blob URL the viewer can show directly.
+ */
+export function usePreview(
   modelId: number | null,
   ext: string | null,
   containerId: number | null,
-): MeshState {
-  // Results are tagged with the model they belong to, so a stale one is never shown.
+): PreviewState {
+  // Results are tagged with the file they belong to, so a stale one is never shown.
   const [result, setResult] = useState<{ id: number; value: Fetched } | null>(null);
-  const wanted = modelId !== null && ext === "stl" ? modelId : null;
+  const wanted = modelId !== null && ext !== null && previewable(ext) ? modelId : null;
 
   useEffect(() => {
-    if (wanted === null) return;
+    if (wanted === null || ext === null) return;
     const ctrl = new AbortController();
     let geometry: THREE.BufferGeometry | null = null;
+    let url: string | null = null;
     let live = true;
     const put = (value: Fetched) => {
       if (live) setResult({ id: wanted, value });
@@ -64,11 +96,14 @@ export function useMesh(
         }
         const buf = await res.arrayBuffer();
         if (!live) return;
-        geometry = new STLLoader().parse(buf);
-        geometry.computeBoundingBox();
-        geometry.center();
-        if (!geometry.getAttribute("normal")) geometry.computeVertexNormals();
-        put({ status: "ready", geometry, bytes: buf.byteLength });
+        const kind = fileKind(ext);
+        if (kind === "mesh") {
+          geometry = parseStl(buf);
+          put({ status: "ready", geometry, bytes: buf.byteLength });
+        } else {
+          url = URL.createObjectURL(new Blob([buf], { type: MIME[ext] ?? "" }));
+          put({ status: "file", url, kind, bytes: buf.byteLength });
+        }
       } catch (e) {
         if (ctrl.signal.aborted) return;
         put({
@@ -76,8 +111,8 @@ export function useMesh(
           kind: "parse",
           message:
             e instanceof Error
-              ? `Could not read this STL: ${e.message}`
-              : "Could not read this STL",
+              ? `Could not read this file: ${e.message}`
+              : "Could not read this file",
         });
       }
     })();
@@ -87,8 +122,9 @@ export function useMesh(
       ctrl.abort();
       void unlisten.then((off) => off());
       geometry?.dispose();
+      if (url) URL.revokeObjectURL(url);
     };
-  }, [wanted, containerId]);
+  }, [wanted, ext, containerId]);
 
   // Nothing is being previewed any more: stop any 7-Zip process still working for us.
   useEffect(() => {
@@ -96,7 +132,7 @@ export function useMesh(
   }, [modelId]);
 
   if (modelId === null || ext === null) return { status: "idle" };
-  if (ext !== "stl") return { status: "unsupported", ext };
+  if (!previewable(ext)) return { status: "unsupported", ext };
   if (!result || result.id !== modelId) return { status: "loading", unpack: null };
   const v = result.value;
   if (v.status === "unpacking") return { status: "loading", unpack: v.percent };

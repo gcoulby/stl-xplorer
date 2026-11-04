@@ -98,7 +98,7 @@ mod tests {
                (1, 2, 1, 'orcs/orc_warrior_body.stl', 'orc_warrior_body.stl', 'stl'),
                (2, 1, 1, '/l/benchy.stl', 'benchy.stl', 'stl');
              INSERT INTO tags (id, name) VALUES (1, 'painted');
-             INSERT INTO model_tags VALUES (2, 1);",
+             INSERT INTO model_tags (model_id, tag_id) VALUES (2, 1);",
         )
         .expect("seed");
         queries::refresh_fts(&conn, &[1, 2]).expect("fts");

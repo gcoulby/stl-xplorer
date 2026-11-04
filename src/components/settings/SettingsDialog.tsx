@@ -14,6 +14,7 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   Star,
+  Tags as TagsIcon,
   Trash2,
   TriangleAlert,
   Wrench,
@@ -34,8 +35,10 @@ import {
   TabsTrigger,
   Tip,
 } from "@/components/ui/overlay";
+import { TAG_COLOURS } from "@/components/browser/TagPicker";
 import {
   invalidateIndex,
+  invalidateTags,
   qk,
   useCacheStats,
   useLibraries,
@@ -43,6 +46,8 @@ import {
   useSevenZip,
   useSlicerPresets,
   useSlicers,
+  useTagSuggestions,
+  useTags,
 } from "@/features/queries";
 import { toast } from "@/features/toast";
 import { api, errorMessage } from "@/lib/api";
@@ -57,12 +62,13 @@ import {
   ZERO_ROTATION,
 } from "@/lib/utils";
 import { useUi, type SettingsTab, type Theme } from "@/store/ui";
-import type { Rotation, Slicer } from "@/types";
+import type { Rotation, Slicer, Tag } from "@/types";
 
 const TABS: Array<{ id: SettingsTab; label: string; icon: React.ReactNode }> = [
   { id: "libraries", label: "Libraries", icon: <LibraryIcon /> },
   { id: "slicers", label: "Slicers", icon: <SlidersHorizontal /> },
   { id: "archives", label: "Archives", icon: <Archive /> },
+  { id: "tags", label: "Tags", icon: <TagsIcon /> },
   { id: "orientation", label: "Orientation", icon: <Rotate3d /> },
   { id: "vault", label: "Vault", icon: <ShieldCheck /> },
   { id: "appearance", label: "Appearance", icon: <Brush /> },
@@ -99,7 +105,8 @@ export function SettingsDialog() {
               ))}
             </TabsList>
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto p-6">
+          {/* Top padding keeps section actions clear of the dialog's close button. */}
+          <div className="min-h-0 flex-1 overflow-y-auto px-6 pt-12 pb-6">
             <TabsContent value="libraries">
               <LibrariesTab />
             </TabsContent>
@@ -108,6 +115,9 @@ export function SettingsDialog() {
             </TabsContent>
             <TabsContent value="archives">
               <ArchivesTab />
+            </TabsContent>
+            <TabsContent value="tags">
+              <TagsTab />
             </TabsContent>
             <TabsContent value="orientation">
               <OrientationTab />
@@ -150,6 +160,166 @@ function Section({
       </div>
       {children}
     </section>
+  );
+}
+
+function TagsTab() {
+  const qc = useQueryClient();
+  const tags = useTags();
+  const suggestions = useTagSuggestions(true);
+  const [name, setName] = useState("");
+  const [keywords, setKeywords] = useState("");
+  const refresh = () => {
+    invalidateTags(qc);
+    void qc.invalidateQueries({ queryKey: qk.suggestions });
+  };
+
+  const create = async (tagName: string, kw: string) => {
+    try {
+      const all = tags.data ?? [];
+      await api.createTag(tagName, TAG_COLOURS[all.length % TAG_COLOURS.length], kw);
+      refresh();
+      toast.success(`Tag “${tagName}” added`, kw ? "Matching files are tagged now." : undefined);
+    } catch (e) {
+      toast.error("Could not add tag", errorMessage(e));
+    }
+  };
+
+  return (
+    <>
+      <Section
+        title="Auto tags"
+        description={
+          <>
+            A tag with keywords goes on every file whose folder, archive or file name contains one
+            of them, and stays up to date as new files are indexed. Separate keywords with commas.
+            End one with * to match the start of a word, so <code>ork*</code> also finds orks and
+            orkz. Tags you add by hand are never removed.
+          </>
+        }
+      >
+        <form
+          className="mb-3 flex gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!name.trim()) return;
+            void create(name.trim(), keywords.trim() || name.trim().toLowerCase());
+            setName("");
+            setKeywords("");
+          }}
+        >
+          <Input
+            placeholder="Tag name, e.g. Orks"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="w-44"
+          />
+          <Input
+            placeholder="Keywords, e.g. ork*, goff, snakebite"
+            value={keywords}
+            onChange={(e) => setKeywords(e.target.value)}
+            className="flex-1"
+          />
+          <Button type="submit" size="sm" disabled={!name.trim()}>
+            <Plus /> Add
+          </Button>
+        </form>
+        {tags.isLoading && <Skeleton className="h-16" />}
+        {(tags.data ?? []).length > 0 && (
+          <div className="flex flex-col divide-y rounded-lg border">
+            {(tags.data ?? []).map((t) => (
+              <TagRuleRow key={`${t.id}:${t.keywords ?? ""}`} tag={t} onChanged={refresh} />
+            ))}
+          </div>
+        )}
+      </Section>
+      <Section
+        title="Suggestions"
+        description="Words that turn up in many of your folder and archive names. Click one to make it an auto tag."
+      >
+        {suggestions.isLoading ? (
+          <Skeleton className="h-16" />
+        ) : (suggestions.data ?? []).length === 0 ? (
+          <p className="text-xs text-muted-foreground">No suggestions right now.</p>
+        ) : (
+          <div className="flex flex-wrap gap-1.5">
+            {(suggestions.data ?? []).map((s) => (
+              <button
+                key={s.word}
+                type="button"
+                onClick={() =>
+                  void create(s.word.charAt(0).toUpperCase() + s.word.slice(1), s.word)
+                }
+                className="inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-xs hover:border-primary/50 hover:bg-accent"
+              >
+                <Plus className="size-3 text-muted-foreground" />
+                {s.word}
+                <span className="text-muted-foreground tabular-nums">{s.containers}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </Section>
+    </>
+  );
+}
+
+function TagRuleRow({ tag, onChanged }: { tag: Tag; onChanged: () => void }) {
+  const [draft, setDraft] = useState(tag.keywords ?? "");
+  const dirty = draft.trim() !== (tag.keywords ?? "");
+  const save = async () => {
+    if (!dirty) return;
+    try {
+      await api.updateTag(tag.id, { keywords: draft.trim() });
+      onChanged();
+    } catch (e) {
+      toast.error("Could not save keywords", errorMessage(e));
+    }
+  };
+  return (
+    <div className="flex items-center gap-3 px-3 py-2">
+      <span className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: tag.colour }} />
+      <div className="flex w-36 shrink-0 flex-col">
+        <span className="truncate text-sm font-medium">{tag.name}</span>
+        <span className="text-[11px] text-muted-foreground tabular-nums">
+          {plural(tag.usage, "item")}
+          {tag.autoUsage > 0 && ` · ${tag.autoUsage.toLocaleString("en-GB")} auto`}
+        </span>
+      </div>
+      <form
+        className="flex min-w-0 flex-1 gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void save();
+        }}
+      >
+        <Input
+          value={draft}
+          placeholder="No keywords: tagged by hand only"
+          onChange={(e) => setDraft(e.target.value)}
+          className="h-8"
+        />
+        {dirty && (
+          <Button type="submit" size="xs">
+            Save
+          </Button>
+        )}
+      </form>
+      <Tip label="Delete tag">
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          onClick={() =>
+            void api
+              .deleteTag(tag.id)
+              .then(onChanged)
+              .catch((e: unknown) => toast.error("Could not delete tag", errorMessage(e)))
+          }
+        >
+          <Trash2 />
+        </Button>
+      </Tip>
+    </div>
   );
 }
 

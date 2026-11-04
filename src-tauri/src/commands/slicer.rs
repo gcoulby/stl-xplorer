@@ -177,6 +177,24 @@ pub async fn open_in_slicer(
             row.ok_or_else(|| AppError::Invalid("Add a slicer in Settings first".into()))?
         };
         let args: Vec<String> = serde_json::from_str(&args).unwrap_or_default();
+        // Images and PDFs ride along in selections; slicers only get the meshes.
+        let model_ids: Vec<i64> = {
+            let conn = st.db.lock()?;
+            let mut keep = Vec::new();
+            for id in model_ids {
+                let ext: String =
+                    conn.query_row("SELECT ext FROM models WHERE id = ?1", [id], |r| r.get(0))?;
+                if crate::util::is_mesh_ext(&ext) {
+                    keep.push(id);
+                }
+            }
+            keep
+        };
+        if model_ids.is_empty() {
+            return Err(AppError::Invalid(
+                "None of the selected files are models".into(),
+            ));
+        }
         let files = crate::preview::real_paths(st, &model_ids)?;
         let mode = slicer::launch(&PathBuf::from(exe), &args, &files, one_per_file)?;
         Ok(match mode {

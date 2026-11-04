@@ -2,14 +2,17 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   Copy,
   Eye,
+  ExternalLink,
   FolderInput,
   FolderOpen,
+  FolderSearch,
   Package,
   PackageOpen,
   Plus,
   Send,
   ShieldCheck,
   Tag as TagIcon,
+  Trash2,
 } from "lucide-react";
 
 import {
@@ -30,11 +33,12 @@ import {
   useVaultSave,
 } from "@/features/actions";
 import type { ListItem } from "@/features/listing";
+import { deletable, useDeleteConfirm } from "@/features/delete";
 import { qk, useCollections, useSlicers, useTags } from "@/features/queries";
 import { usePrompt, type SelectedInfo } from "@/features/selection";
 import { toast } from "@/features/toast";
 import { api, errorMessage } from "@/lib/api";
-import { plural } from "@/lib/utils";
+import { isMesh, plural } from "@/lib/utils";
 import { TAG_COLOURS } from "@/components/browser/TagPicker";
 
 export function ItemMenuContent({
@@ -54,6 +58,7 @@ export function ItemMenuContent({
   const setPack = useSetPack();
   const collectionAdd = useCollectionAdd();
   const ask = usePrompt((s) => s.ask);
+  const askDelete = useDeleteConfirm((s) => s.ask);
 
   const single = sel.items.length === 1 ? sel.items[0] : undefined;
   const def = slicers.find((s) => s.isDefault);
@@ -115,7 +120,9 @@ export function ItemMenuContent({
             ? single.model.name
             : single.type === "container"
               ? single.container.name
-              : single.dir.name
+              : single.type === "tag"
+                ? single.tag.name
+                : single.dir.name
           : plural(n, "item")}
       </ContextMenuLabel>
       {single && single.type !== "model" && (
@@ -126,6 +133,17 @@ export function ItemMenuContent({
       {single?.type === "model" && (
         <ContextMenuItem onSelect={() => onActivate(single)}>
           <Eye /> Preview
+        </ContextMenuItem>
+      )}
+      {single?.type === "model" && !isMesh(single.model.ext) && (
+        <ContextMenuItem
+          onSelect={() =>
+            void api
+              .openExternally(single.model.id)
+              .catch((e: unknown) => toast.error("Could not open the file", errorMessage(e)))
+          }
+        >
+          <ExternalLink /> Open with default app
         </ContextMenuItem>
       )}
       {sel.openableIds.length > 0 && (
@@ -235,9 +253,22 @@ export function ItemMenuContent({
           </ContextMenuItem>
         </>
       )}
-      {single && single.type !== "dir" && (
+      {single && (single.type === "model" || single.type === "container") && (
         <>
           <ContextMenuSeparator />
+          <ContextMenuItem
+            onSelect={() =>
+              void api
+                .revealInFolder(
+                  single.type === "model"
+                    ? { modelId: single.model.id }
+                    : { containerId: single.container.id },
+                )
+                .catch((e: unknown) => toast.error("Could not show it", errorMessage(e)))
+            }
+          >
+            <FolderSearch /> Show in folder
+          </ContextMenuItem>
           <ContextMenuItem
             onSelect={() => {
               const text = single.type === "model" ? single.model.relPath : single.container.path;
@@ -245,6 +276,15 @@ export function ItemMenuContent({
             }}
           >
             <Copy /> Copy path
+          </ContextMenuItem>
+        </>
+      )}
+      {deletable(sel.items).length > 0 && (
+        <>
+          <ContextMenuSeparator />
+          <ContextMenuItem variant="destructive" onSelect={() => askDelete(sel.items)}>
+            <Trash2 /> Delete…
+            <span className="ml-auto text-[11px] opacity-60">Del</span>
           </ContextMenuItem>
         </>
       )}

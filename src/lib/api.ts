@@ -6,6 +6,7 @@ import type {
   BrowseResult,
   CacheStats,
   Collection,
+  DeleteReport,
   ContainerInfo,
   LaunchReport,
   Library,
@@ -16,7 +17,9 @@ import type {
   Slicer,
   SlicerInput,
   SlicerPreset,
+  ProblemArchive,
   Tag,
+  TagSuggestion,
   TaggedItems,
   VaultReport,
 } from "@/types";
@@ -63,8 +66,15 @@ export const api = {
   rescanAll: () => call<null>("rescan_all"),
   runningScans: () => call<number[]>("running_scans"),
 
-  browse: (containerId: number, subpath: string) =>
-    call<BrowseResult>("browse", { containerId, subpath }),
+  browse: (containerId: number, subpath: string, flat = false) =>
+    call<BrowseResult>("browse", { containerId, subpath, flat }),
+  problemArchives: () => call<ProblemArchive[]>("problem_archives"),
+  archiveProblem: (id: number) => call<ProblemArchive>("archive_problem", { id }),
+  revealInFolder: (target: { containerId?: number; modelId?: number }) =>
+    call<null>("reveal_in_folder", target),
+  openExternally: (modelId: number) => call<null>("open_externally", { modelId }),
+  deleteItems: (modelIds: number[], containerIds: number[]) =>
+    call<DeleteReport>("delete_items", { modelIds, containerIds }),
   modelDetail: (id: number) => call<ModelDetail>("model_detail", { id }),
   containerDetail: (id: number) => call<ContainerInfo>("container_detail", { id }),
   setModelRotation: (modelIds: number[], rotation: Rotation | null) =>
@@ -87,9 +97,11 @@ export const api = {
     call<LaunchReport>("open_in_slicer", { modelIds, slicerId }),
 
   listTags: () => call<Tag[]>("list_tags"),
-  createTag: (name: string, colour?: string) => call<Tag>("create_tag", { name, colour }),
-  updateTag: (id: number, patch: { name?: string; colour?: string }) =>
+  createTag: (name: string, colour?: string, keywords?: string) =>
+    call<Tag>("create_tag", { name, colour, keywords }),
+  updateTag: (id: number, patch: { name?: string; colour?: string; keywords?: string }) =>
     call<Tag[]>("update_tag", { id, ...patch }),
+  suggestTags: () => call<TagSuggestion[]>("suggest_tags"),
   deleteTag: (id: number) => call<Tag[]>("delete_tag", { id }),
   tagItems: (tagId: number, modelIds: number[], containerIds: number[], add: boolean) =>
     call<null>("tag_items", { tagId, modelIds, containerIds, add }),

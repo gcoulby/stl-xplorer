@@ -30,7 +30,7 @@ fn command_for(exe: &Path, args: &[String], files: &[PathBuf]) -> Command {
     cmd
 }
 
-fn spawn_detached(mut cmd: Command) -> std::io::Result<()> {
+pub fn spawn_detached(mut cmd: Command) -> std::io::Result<()> {
     cmd.stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());

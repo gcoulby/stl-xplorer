@@ -1,7 +1,19 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { FolderSearch, SearchX, TriangleAlert } from "lucide-react";
+import {
+  FolderSearch,
+  FolderTree,
+  ListTree,
+  SearchX,
+  Tag as TagIcon,
+  TriangleAlert,
+} from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
+import {
+  ArchiveProblemBanner,
+  ArchiveProblemPanel,
+  hasProblem,
+} from "@/components/browser/ArchiveProblem";
 import { Breadcrumbs } from "@/components/browser/Breadcrumbs";
 import { ItemMenuContent } from "@/components/browser/ItemMenu";
 import {
@@ -16,13 +28,15 @@ import { SelectionBar } from "@/components/browser/SelectionBar";
 import { Button } from "@/components/ui/button";
 import { ContextMenu, ContextMenuTrigger } from "@/components/ui/menu";
 import { Skeleton } from "@/components/ui/misc";
+import { Tip } from "@/components/ui/overlay";
 import { useOpenInSlicer } from "@/features/actions";
+import { useDeleteConfirm } from "@/features/delete";
 import { useListing, type ListItem } from "@/features/listing";
 import { useLibraries, useSlicers } from "@/features/queries";
 import { useSelected } from "@/features/selection";
 import { toast } from "@/features/toast";
-import { errorMessage } from "@/lib/api";
-import { cn, formatBytes, formatDate, plural } from "@/lib/utils";
+import { api, errorMessage } from "@/lib/api";
+import { cn, formatBytes, formatDate, isMesh, plural } from "@/lib/utils";
 import { treeKey, useUi } from "@/store/ui";
 
 const ROW_H = 34;
@@ -32,12 +46,20 @@ const TILE_H = 152;
 function itemName(it: ListItem): string {
   if (it.type === "model") return it.model.name;
   if (it.type === "container") return it.container.name;
+  if (it.type === "tag") return it.tag.name;
   return it.dir.name;
+}
+
+function openExternally(modelId: number) {
+  void api
+    .openExternally(modelId)
+    .catch((e: unknown) => toast.error("Could not open the file", errorMessage(e)));
 }
 
 export function FileList() {
   const loc = useUi((s) => s.location);
-  const listing = useListing(loc);
+  const flat = useUi((s) => s.flat);
+  const listing = useListing(loc, flat);
   const { items } = listing;
   const viewMode = useUi((s) => s.viewMode);
   const selection = useUi((s) => s.selection);
@@ -89,6 +111,7 @@ export function FileList() {
         navigate({ kind: "container", containerId: it.containerId, subpath: it.dir.path });
       else if (it.type === "container")
         navigate({ kind: "container", containerId: it.container.id, subpath: "" });
+      else if (it.type === "tag") navigate({ kind: "tag", tagId: it.tag.id });
       else setPreview(it.model.id);
     },
     [navigate, setPreview],
@@ -143,8 +166,9 @@ export function FileList() {
   };
 
   const onDoubleClick = (it: ListItem) => {
-    if (it.type === "model") sendToSlicer([it.model.id]);
-    else activate(it);
+    if (it.type !== "model") return activate(it);
+    if (isMesh(it.model.ext)) sendToSlicer([it.model.id]);
+    else openExternally(it.model.id);
   };
 
   const goUp = () => {
@@ -201,12 +225,19 @@ export function FileList() {
         const it = cur >= 0 ? items[cur] : undefined;
         if (sel.openableIds.length > 0) return sendToSlicer(sel.openableIds);
         if (it && it.type !== "model") return activate(it);
-        if (it?.type === "model") return sendToSlicer([it.model.id]);
+        if (it?.type === "model" && isMesh(it.model.ext)) return sendToSlicer([it.model.id]);
+        if (it?.type === "model") return openExternally(it.model.id);
         return;
       }
       case "Backspace":
         e.preventDefault();
         return goUp();
+      case "Delete":
+        if (sel.items.length > 0) {
+          e.preventDefault();
+          useDeleteConfirm.getState().ask(sel.items);
+        }
+        return;
       case "Escape":
         if (selection.length > 0) {
           e.preventDefault();
@@ -233,6 +264,7 @@ export function FileList() {
   };
 
   const selectedSet = useMemo(() => new Set(selection), [selection]);
+  const problem = listing.container && hasProblem(listing.container) ? listing.container : null;
 
   return (
     <div className="flex h-full min-w-0 flex-col bg-pane">
@@ -254,10 +286,13 @@ export function FileList() {
               <LoadingRows grid={viewMode === "grid"} />
             ) : listing.error ? (
               <ListError error={listing.error} />
+            ) : problem && items.length === 0 ? (
+              <ArchiveProblemPanel container={problem} />
             ) : items.length === 0 ? (
               <EmptyState loc={loc.kind} hint={listing.emptyHint} />
             ) : (
               <>
+                {problem && <ArchiveProblemBanner container={problem} />}
                 {viewMode === "list" && <ListColumns />}
                 <div
                   style={{ height: virtualizer.getTotalSize(), position: "relative" }}
@@ -277,7 +312,7 @@ export function FileList() {
                           selected={selectedSet.has(it.key)}
                           focused={focused === it.key}
                           previewing={it.type === "model" && it.model.id === previewId}
-                          showLocation={loc.kind === "search"}
+                          showLocation={listing.showLocation}
                           onClick={onClick}
                           onDoubleClick={onDoubleClick}
                         />
@@ -329,6 +364,9 @@ function ListHeader({
 }) {
   const viewMode = useUi((s) => s.viewMode);
   const setViewMode = useUi((s) => s.setViewMode);
+  const flat = useUi((s) => s.flat);
+  const setFlat = useUi((s) => s.setFlat);
+  const browsing = useUi((s) => s.location.kind === "container");
   const count = listing.items.length;
   return (
     <div className="flex h-11 shrink-0 items-center gap-2 border-b px-3">
@@ -340,8 +378,32 @@ function ListHeader({
         )}
       </div>
       <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-        {count > 0 && plural(count, "item")}
+        {count > 0 && plural(count, flat && browsing ? "file" : "item")}
       </span>
+      {browsing && (
+        <div className="flex shrink-0 rounded-md border p-0.5">
+          {([false, true] as const).map((f) => (
+            <Tip
+              key={String(f)}
+              label={f ? "Every file below here in one list" : "Folders and archives"}
+            >
+              <Button
+                variant="ghost"
+                size="xs"
+                className={cn(
+                  "h-6 gap-1 px-1.5 text-xs",
+                  flat === f ? "bg-accent text-foreground" : "text-muted-foreground",
+                )}
+                onClick={() => setFlat(f)}
+                aria-pressed={flat === f}
+              >
+                {f ? <ListTree className="size-3.5" /> : <FolderTree className="size-3.5" />}
+                {f ? "All files" : "Folders"}
+              </Button>
+            </Tip>
+          ))}
+        </div>
+      )}
       <div className="flex shrink-0 rounded-md border p-0.5">
         {(["list", "grid"] as const).map((m) => (
           <Button
@@ -404,18 +466,41 @@ function ItemIcon({ it, className }: { it: ListItem; className?: string }) {
   if (it.type === "dir") return <ArchiveDirIcon className={className} />;
   if (it.type === "container")
     return <ContainerIcon container={it.container} className={className} />;
+  if (it.type === "tag")
+    return (
+      <TagIcon
+        className={cn("size-4 shrink-0", className)}
+        style={{ color: it.tag.colour }}
+        fill={it.tag.colour}
+        fillOpacity={0.2}
+      />
+    );
   return <ModelIcon ext={it.model.ext} className={className} />;
 }
 
+function counts(models: number, files: number): string {
+  const extra = files - models;
+  if (models === 0) return plural(files, "file");
+  return extra > 0
+    ? `${plural(models, "model")} · ${plural(extra, "other file")}`
+    : plural(models, "model");
+}
+
 function subtitle(it: ListItem): string | null {
-  if (it.type === "dir") return plural(it.dir.modelCount, "model");
+  if (it.type === "dir") return counts(it.dir.modelCount, it.dir.fileCount);
+  if (it.type === "tag") {
+    const t = it.tag;
+    return t.autoUsage > 0
+      ? `${plural(t.usage, "item")} · ${t.autoUsage} auto`
+      : plural(t.usage, "item");
+  }
   if (it.type === "container") {
     const c = it.container;
     if (c.kind !== "folder" && (c.status !== "ok" || c.encrypted)) return null;
-    if (c.modelCount === 0 && c.issueCount > 0) {
+    if (c.fileCount === 0 && c.issueCount > 0) {
       return `${plural(c.issueCount, "archive")} ${c.issueCount === 1 ? "needs" : "need"} attention`;
     }
-    return plural(c.modelCount, "model");
+    return counts(c.modelCount, c.fileCount);
   }
   return null;
 }
@@ -441,6 +526,7 @@ function ListRow({
   const sub = subtitle(it);
   const tagIds =
     it.type === "model" ? it.model.tagIds : it.type === "container" ? it.container.tagIds : [];
+  const location = it.type === "model" || it.type === "container" ? it.location : undefined;
   return (
     <div
       data-key={it.key}
@@ -463,8 +549,10 @@ function ListRow({
         {it.type === "model" && <ModelBadges m={it.model} compact />}
         <TagDots ids={tagIds} />
         {sub && <span className="shrink-0 text-xs text-muted-foreground">{sub}</span>}
-        {showLocation && it.type === "model" && it.location && (
-          <span className="truncate text-xs text-muted-foreground">{it.location}</span>
+        {showLocation && location && (
+          <span className="truncate text-xs text-muted-foreground" title={location}>
+            {location}
+          </span>
         )}
       </div>
       <span className="w-20 shrink-0 text-right text-xs text-muted-foreground tabular-nums">

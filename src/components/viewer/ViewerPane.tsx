@@ -3,6 +3,7 @@ import {
   Box,
   ChevronDown,
   Crosshair,
+  ExternalLink,
   Grid3x3,
   Lock,
   MousePointerClick,
@@ -31,11 +32,11 @@ import { Badge, Kbd, Progress, Skeleton } from "@/components/ui/misc";
 import { Popover, PopoverContent, PopoverTrigger, Tip } from "@/components/ui/overlay";
 import { StlCanvas, type Dimensions, type StlCanvasHandle } from "@/components/viewer/StlCanvas";
 import { useOpenInSlicer, useVaultSave } from "@/features/actions";
-import { useMesh } from "@/features/mesh";
+import { usePreview, type PreviewState } from "@/features/mesh";
 import { useModelDetail, useSlicers, useTags } from "@/features/queries";
 import { toast } from "@/features/toast";
 import { api, errorMessage } from "@/lib/api";
-import { cn, formatBytes, rotate90, sameRotation, ZERO_ROTATION } from "@/lib/utils";
+import { cn, fileKind, formatBytes, rotate90, sameRotation, ZERO_ROTATION } from "@/lib/utils";
 import { useUi } from "@/store/ui";
 import type { Rotation, RotationSource } from "@/types";
 
@@ -51,11 +52,12 @@ export function ViewerPane() {
   const modelId = useUi((s) => s.previewModelId);
   const detailQ = useModelDetail(modelId);
   const detail = detailQ.data && detailQ.data.model.id === modelId ? detailQ.data : undefined;
-  const mesh = useMesh(
+  const mesh = usePreview(
     detail?.model.id ?? null,
     detail?.model.ext ?? null,
     detail?.model.containerId ?? null,
   );
+  const isMeshFile = detail ? fileKind(detail.model.ext) === "mesh" : true;
   const canvas = useRef<StlCanvasHandle>(null);
   const [dims, setDims] = useState<Dimensions | null>(null);
   const [wireframe, setWireframe] = useState(false);
@@ -116,62 +118,73 @@ export function ViewerPane() {
   return (
     <div className="flex h-full min-w-0 flex-col bg-pane">
       <ViewerHeader detail={detail} loading={detailQ.isLoading} />
-      <div className="relative min-h-0 flex-1 bg-viewer">
-        <StlCanvas
-          ref={canvas}
-          geometry={mesh.status === "ready" ? mesh.geometry : null}
-          rotation={draft}
-          wireframe={wireframe}
-          onDimensions={onDims}
-        />
-        <MeshOverlay state={mesh} />
-        {mesh.status === "ready" && (
-          <div className="pointer-events-none absolute bottom-3 left-3 flex flex-col gap-1">
-            {dims && (
-              <div className="rounded-md border bg-background/80 px-2.5 py-1.5 font-mono text-[11px] text-muted-foreground tabular-nums shadow-sm backdrop-blur">
-                <span className="text-red-400">X</span> {dims.x.toFixed(1)} ·{" "}
-                <span className="text-green-400">Y</span> {dims.y.toFixed(1)} ·{" "}
-                <span className="text-sky-400">Z</span> {dims.z.toFixed(1)} mm
-                <span className="ml-2 opacity-70">
-                  {dims.triangles.toLocaleString("en-GB")} triangles
-                </span>
-              </div>
+      {!isMeshFile ? (
+        <div className="relative min-h-0 flex-1 bg-viewer">
+          {mesh.status === "file" && <FilePreview state={mesh} name={detail?.model.name ?? ""} />}
+          <MeshOverlay state={mesh} />
+        </div>
+      ) : (
+        <div className="relative min-h-0 flex-1 bg-viewer">
+          <StlCanvas
+            ref={canvas}
+            geometry={mesh.status === "ready" ? mesh.geometry : null}
+            rotation={draft}
+            wireframe={wireframe}
+            onDimensions={onDims}
+          />
+          <MeshOverlay state={mesh} />
+          {mesh.status === "ready" && (
+            <div className="pointer-events-none absolute bottom-3 left-3 flex flex-col gap-1">
+              {dims && (
+                <div className="rounded-md border bg-background/80 px-2.5 py-1.5 font-mono text-[11px] text-muted-foreground tabular-nums shadow-sm backdrop-blur">
+                  <span className="text-red-400">X</span> {dims.x.toFixed(1)} ·{" "}
+                  <span className="text-green-400">Y</span> {dims.y.toFixed(1)} ·{" "}
+                  <span className="text-sky-400">Z</span> {dims.z.toFixed(1)} mm
+                  <span className="ml-2 opacity-70">
+                    {dims.triangles.toLocaleString("en-GB")} triangles
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+          <div className="absolute top-3 right-3 flex flex-col items-end gap-2">
+            <div className="flex items-center gap-0.5 rounded-lg border bg-background/85 p-1 shadow-sm backdrop-blur">
+              <Tip label="Reset camera (R)">
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  onClick={() => canvas.current?.resetCamera()}
+                >
+                  <Crosshair />
+                </Button>
+              </Tip>
+              <Tip label="Wireframe">
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  className={cn(wireframe && "bg-accent text-primary")}
+                  onClick={() => setWireframe((w) => !w)}
+                >
+                  <Grid3x3 />
+                </Button>
+              </Tip>
+            </div>
+            {detail && (
+              <OrientationControls
+                draft={draft}
+                setDraft={setDraft}
+                dirty={dirty}
+                source={detail.rotation.source}
+                hasModelOverride={detail.model.rotation !== null}
+                packName={detail.pack?.name ?? null}
+                hasPackOverride={Boolean(detail.pack?.rotation)}
+                onSave={save}
+                onRevert={() => setDraft(resolved)}
+              />
             )}
           </div>
-        )}
-        <div className="absolute top-3 right-3 flex flex-col items-end gap-2">
-          <div className="flex items-center gap-0.5 rounded-lg border bg-background/85 p-1 shadow-sm backdrop-blur">
-            <Tip label="Reset camera (R)">
-              <Button variant="ghost" size="icon-xs" onClick={() => canvas.current?.resetCamera()}>
-                <Crosshair />
-              </Button>
-            </Tip>
-            <Tip label="Wireframe">
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                className={cn(wireframe && "bg-accent text-primary")}
-                onClick={() => setWireframe((w) => !w)}
-              >
-                <Grid3x3 />
-              </Button>
-            </Tip>
-          </div>
-          {detail && (
-            <OrientationControls
-              draft={draft}
-              setDraft={setDraft}
-              dirty={dirty}
-              source={detail.rotation.source}
-              hasModelOverride={detail.model.rotation !== null}
-              packName={detail.pack?.name ?? null}
-              hasPackOverride={Boolean(detail.pack?.rotation)}
-              onSave={save}
-              onRevert={() => setDraft(resolved)}
-            />
-          )}
         </div>
-      </div>
+      )}
       {detail && <ViewerFooter modelId={detail.model.id} />}
     </div>
   );
@@ -304,7 +317,29 @@ function OrientationControls({
   );
 }
 
-function MeshOverlay({ state }: { state: ReturnType<typeof useMesh> }) {
+function FilePreview({
+  state,
+  name,
+}: {
+  state: Extract<PreviewState, { status: "file" }>;
+  name: string;
+}) {
+  if (state.kind === "pdf") {
+    return <iframe src={state.url} title={name} className="absolute inset-0 size-full border-0" />;
+  }
+  return (
+    <div className="absolute inset-0 flex items-center justify-center p-4">
+      <img
+        src={state.url}
+        alt={name}
+        className="max-h-full max-w-full rounded-md object-contain shadow-lg"
+        draggable={false}
+      />
+    </div>
+  );
+}
+
+function MeshOverlay({ state }: { state: PreviewState }) {
   if (state.status === "loading") {
     return (
       <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
@@ -322,7 +357,7 @@ function MeshOverlay({ state }: { state: ReturnType<typeof useMesh> }) {
           ) : (
             <>
               <Box className="size-6 animate-pulse text-primary" />
-              <span className="text-sm text-muted-foreground">Loading model…</span>
+              <span className="text-sm text-muted-foreground">Loading…</span>
             </>
           )}
         </div>
@@ -357,7 +392,7 @@ function MeshOverlay({ state }: { state: ReturnType<typeof useMesh> }) {
               ? "This archive is password protected"
               : state.kind === "too_large"
                 ? "Too large to preview"
-                : "Could not preview this model"}
+                : "Could not preview this file"}
         </p>
         <p className="max-w-sm text-xs text-muted-foreground">{state.message}</p>
       </div>
@@ -376,6 +411,7 @@ function ViewerFooter({ modelId }: { modelId: number }) {
   if (!detail) return null;
   const m = detail.model;
   const def = slicers.find((s) => s.isDefault);
+  const isMeshFile = fileKind(m.ext) === "mesh";
   const modelTags = m.tagIds
     .map((id) => tags.find((t) => t.id === id))
     .filter((t): t is NonNullable<typeof t> => Boolean(t));
@@ -414,25 +450,41 @@ function ViewerFooter({ modelId }: { modelId: number }) {
         </span>
       </div>
       <div className="flex items-center gap-1.5">
-        <Button
-          size="sm"
-          className="flex-1"
-          disabled={m.encrypted || open.isPending}
-          onClick={() => {
-            if (!def) {
-              toast.info("No slicer set up yet", "Add one in Settings → Slicers.");
-              openSettings("slicers");
-              return;
+        {!isMeshFile ? (
+          <Button
+            size="sm"
+            className="flex-1"
+            disabled={m.encrypted}
+            onClick={() =>
+              void api
+                .openExternally(m.id)
+                .catch((e: unknown) => toast.error("Could not open the file", errorMessage(e)))
             }
-            open.mutate({ modelIds: [m.id] });
-          }}
-        >
-          <Send />
-          {def ? `Open in ${def.name}` : "Set up a slicer"}
-          <Kbd className="ml-1 border-primary-foreground/30 bg-primary-foreground/15 text-primary-foreground">
-            ↵
-          </Kbd>
-        </Button>
+          >
+            <ExternalLink />
+            Open with default app
+          </Button>
+        ) : (
+          <Button
+            size="sm"
+            className="flex-1"
+            disabled={m.encrypted || open.isPending}
+            onClick={() => {
+              if (!def) {
+                toast.info("No slicer set up yet", "Add one in Settings → Slicers.");
+                openSettings("slicers");
+                return;
+              }
+              open.mutate({ modelIds: [m.id] });
+            }}
+          >
+            <Send />
+            {def ? `Open in ${def.name}` : "Set up a slicer"}
+            <Kbd className="ml-1 border-primary-foreground/30 bg-primary-foreground/15 text-primary-foreground">
+              ↵
+            </Kbd>
+          </Button>
+        )}
         {!m.vaulted && (
           <Tip label="Move into the vault so the downloads clean-up cannot delete it">
             <Button
@@ -463,9 +515,10 @@ function ViewerEmpty() {
         <MousePointerClick className="size-6 text-muted-foreground" />
       </div>
       <div className="flex flex-col gap-1">
-        <p className="text-sm font-medium">Select a model to preview it</p>
+        <p className="text-sm font-medium">Select a file to preview it</p>
         <p className="max-w-xs text-xs text-muted-foreground">
-          Files inside zip, 7z and rar archives preview without unpacking anything.
+          Models, images and PDFs inside zip, 7z and rar archives preview without unpacking
+          anything.
         </p>
       </div>
       <div className="grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-1.5 text-left text-xs text-muted-foreground">

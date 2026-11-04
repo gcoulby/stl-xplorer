@@ -1,4 +1,13 @@
-import { ChevronDown, FolderInput, Plus, Send, ShieldCheck, Tag as TagIcon, X } from "lucide-react";
+import {
+  ChevronDown,
+  FolderInput,
+  Plus,
+  Send,
+  ShieldCheck,
+  Tag as TagIcon,
+  Trash2,
+  X,
+} from "lucide-react";
 
 import { TagPicker } from "@/components/browser/TagPicker";
 import { Button } from "@/components/ui/button";
@@ -12,6 +21,7 @@ import {
 } from "@/components/ui/menu";
 import { Popover, PopoverContent, PopoverTrigger, Tip } from "@/components/ui/overlay";
 import { useCollectionAdd, useOpenInSlicer, useVaultSave } from "@/features/actions";
+import { deletable, useDeleteConfirm } from "@/features/delete";
 import { useCollections, useSlicers } from "@/features/queries";
 import { usePrompt, type SelectedInfo } from "@/features/selection";
 import { toast } from "@/features/toast";
@@ -33,6 +43,7 @@ export function SelectionBar({
   const vault = useVaultSave();
   const collectionAdd = useCollectionAdd();
   const ask = usePrompt((s) => s.ask);
+  const askDelete = useDeleteConfirm((s) => s.ask);
   const n = sel.items.length;
   if (n === 0) return null;
   const def = slicers.find((s) => s.isDefault);
@@ -40,7 +51,9 @@ export function SelectionBar({
 
   return (
     <div className="flex h-12 shrink-0 animate-in items-center gap-1.5 border-t bg-card px-3 slide-in-from-bottom-2 fade-in-0">
-      <span className="mr-1 text-sm font-medium tabular-nums">{plural(n, "item")} selected</span>
+      <span className="mr-1 shrink-0 text-sm font-medium whitespace-nowrap tabular-nums">
+        {plural(n, "item")} selected
+      </span>
       <div className="flex-1" />
       {canOpen && (
         <div className="flex">
@@ -163,6 +176,18 @@ export function SelectionBar({
           >
             <ShieldCheck />
             Save
+          </Button>
+        </Tip>
+      )}
+      {deletable(sel.items).length > 0 && (
+        <Tip label="Delete (Del)">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="text-muted-foreground hover:text-destructive"
+            onClick={() => askDelete(sel.items)}
+          >
+            <Trash2 />
           </Button>
         </Tip>
       )}

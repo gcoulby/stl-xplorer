@@ -4,7 +4,11 @@ import { api } from "@/lib/api";
 
 export const qk = {
   libraries: ["libraries"] as const,
-  browse: (containerId: number, subpath: string) => ["browse", containerId, subpath] as const,
+  browse: (containerId: number, subpath: string, flat = false) =>
+    ["browse", containerId, subpath, flat] as const,
+  problems: ["problems"] as const,
+  problem: (id: number) => ["problems", id] as const,
+  suggestions: ["tag-suggestions"] as const,
   model: (id: number) => ["model", id] as const,
   search: (q: string) => ["search", q] as const,
   tags: ["tags"] as const,
@@ -18,9 +22,9 @@ export const qk = {
   cache: ["cache-stats"] as const,
 };
 
-export const browseQuery = (containerId: number, subpath: string) => ({
-  queryKey: qk.browse(containerId, subpath),
-  queryFn: () => api.browse(containerId, subpath),
+export const browseQuery = (containerId: number, subpath: string, flat = false) => ({
+  queryKey: qk.browse(containerId, subpath, flat),
+  queryFn: () => api.browse(containerId, subpath, flat),
   staleTime: 30_000,
 });
 
@@ -28,9 +32,9 @@ export function useLibraries() {
   return useQuery({ queryKey: qk.libraries, queryFn: api.listLibraries });
 }
 
-export function useBrowse(containerId: number | null, subpath: string) {
+export function useBrowse(containerId: number | null, subpath: string, flat = false) {
   return useQuery({
-    ...browseQuery(containerId ?? -1, subpath),
+    ...browseQuery(containerId ?? -1, subpath, flat),
     enabled: containerId !== null,
     placeholderData: keepPreviousData,
   });
@@ -64,6 +68,22 @@ export function useTagged(id: number | null) {
     queryFn: () => api.taggedItems(id ?? -1),
     enabled: id !== null,
   });
+}
+
+export function useProblemArchives(enabled = true) {
+  return useQuery({ queryKey: qk.problems, queryFn: api.problemArchives, enabled });
+}
+
+export function useArchiveProblem(id: number | null) {
+  return useQuery({
+    queryKey: qk.problem(id ?? -1),
+    queryFn: () => api.archiveProblem(id ?? -1),
+    enabled: id !== null,
+  });
+}
+
+export function useTagSuggestions(enabled: boolean) {
+  return useQuery({ queryKey: qk.suggestions, queryFn: api.suggestTags, enabled });
 }
 
 export function useCollections() {
@@ -108,6 +128,8 @@ export function invalidateIndex(qc: QueryClient) {
     "tagged",
     "collection-items",
     "settings",
+    "problems",
+    "tags",
   ]) {
     void qc.invalidateQueries({ queryKey: [key] });
   }

@@ -34,8 +34,31 @@ pub fn ext_of(name: &str) -> String {
 
 pub const MESH_EXTS: [&str; 3] = ["stl", "3mf", "obj"];
 
-pub fn is_mesh_name(name: &str) -> bool {
-    MESH_EXTS.contains(&ext_of(name).as_str())
+pub const IMAGE_EXTS: [&str; 6] = ["png", "jpg", "jpeg", "webp", "gif", "bmp"];
+
+/// SQL list of mesh extensions, for counting "models" as opposed to all indexed files.
+pub const MESH_EXTS_SQL: &str = "('stl', '3mf', 'obj')";
+
+pub fn is_mesh_ext(ext: &str) -> bool {
+    MESH_EXTS.contains(&ext)
+}
+
+/// Meshes, plus the preview images and PDF instructions that packs often ship with.
+pub fn is_indexed_name(name: &str) -> bool {
+    let ext = ext_of(name);
+    is_mesh_ext(&ext) || IMAGE_EXTS.contains(&ext.as_str()) || ext == "pdf"
+}
+
+pub fn content_type(ext: &str) -> &'static str {
+    match ext {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "webp" => "image/webp",
+        "gif" => "image/gif",
+        "bmp" => "image/bmp",
+        "pdf" => "application/pdf",
+        _ => "application/octet-stream",
+    }
 }
 
 /// Browser and download-manager temp files. `.part` alone is an in-progress download, while
@@ -116,6 +139,15 @@ mod tests {
             numbered_name(".hidden", stem_len(".hidden"), 1),
             ".hidden (1)"
         );
+    }
+
+    #[test]
+    fn indexed_file_types() {
+        assert!(is_indexed_name("a.STL"));
+        assert!(is_indexed_name("render.JPG"));
+        assert!(is_indexed_name("guide.pdf"));
+        assert!(!is_indexed_name("notes.txt"));
+        assert!(!is_indexed_name("pdf"));
     }
 
     #[test]

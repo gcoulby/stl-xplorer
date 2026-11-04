@@ -2,6 +2,7 @@ use rusqlite::{params, Connection, OptionalExtension, Row};
 
 use crate::error::{AppError, AppResult};
 use crate::types::{ContainerInfo, Crumb, Library, ModelInfo, Rotation};
+use crate::util::MESH_EXTS_SQL;
 
 fn parse_ids(s: Option<String>) -> Vec<i64> {
     s.map(|s| s.split(',').filter_map(|p| p.parse().ok()).collect())
@@ -25,14 +26,14 @@ pub const CONTAINER_COLS: &str =
   c.status, c.status_detail, c.missing, c.vaulted, c.original_path, c.model_count, c.issue_count,
   CASE WHEN c.kind = 'folder' THEN
     EXISTS (SELECT 1 FROM containers k WHERE k.parent_id = c.id AND k.missing = 0
-            AND (k.model_count > 0 OR k.issue_count > 0))
+            AND (k.file_count > 0 OR k.issue_count > 0))
   ELSE
     EXISTS (SELECT 1 FROM models m WHERE m.container_id = c.id AND m.missing = 0
             AND instr(m.rel_path, '/') > 0)
     OR EXISTS (SELECT 1 FROM containers k WHERE k.parent_id = c.id AND k.missing = 0)
   END,
   (SELECT group_concat(tag_id) FROM container_tags WHERE container_id = c.id),
-  c.rot_x, c.rot_y, c.rot_z";
+  c.rot_x, c.rot_y, c.rot_z, c.file_count";
 
 pub fn container_from_row(r: &Row) -> rusqlite::Result<ContainerInfo> {
     Ok(ContainerInfo {
@@ -59,6 +60,7 @@ pub fn container_from_row(r: &Row) -> rusqlite::Result<ContainerInfo> {
         has_children: r.get(20)?,
         tag_ids: parse_ids(r.get(21)?),
         rotation: rotation(r.get(22)?, r.get(23)?, r.get(24)?),
+        file_count: r.get(25)?,
     })
 }
 
@@ -245,17 +247,20 @@ pub fn recount_library(conn: &Connection, library_id: i64) -> AppResult<()> {
         missing: bool,
         issue: bool,
         direct: i64,
-        old: (i64, i64),
+        files: i64,
+        old: (i64, i64, i64),
     }
     let mut nodes: HashMap<i64, Node> = HashMap::new();
     {
-        let mut stmt = conn.prepare(
+        let mut stmt = conn.prepare(&format!(
             "SELECT c.id, c.parent_id, c.missing,
                     (c.kind <> 'folder' AND (c.status <> 'ok' OR c.encrypted = 1)),
+                    (SELECT COUNT(*) FROM models m WHERE m.container_id = c.id AND m.missing = 0
+                       AND m.ext IN {MESH_EXTS_SQL}),
                     (SELECT COUNT(*) FROM models m WHERE m.container_id = c.id AND m.missing = 0),
-                    c.model_count, c.issue_count
-             FROM containers c WHERE c.library_id = ?1",
-        )?;
+                    c.model_count, c.issue_count, c.file_count
+             FROM containers c WHERE c.library_id = ?1"
+        ))?;
         let rows = stmt.query_map([library_id], |r| {
             Ok((
                 r.get::<_, i64>(0)?,
@@ -264,7 +269,8 @@ pub fn recount_library(conn: &Connection, library_id: i64) -> AppResult<()> {
                     missing: r.get(2)?,
                     issue: r.get(3)?,
                     direct: r.get(4)?,
-                    old: (r.get(5)?, r.get(6)?),
+                    files: r.get(5)?,
+                    old: (r.get(6)?, r.get(7)?, r.get(8)?),
                 },
             ))
         })?;
@@ -273,18 +279,19 @@ pub fn recount_library(conn: &Connection, library_id: i64) -> AppResult<()> {
             nodes.insert(id, n);
         }
     }
-    let mut totals: HashMap<i64, (i64, i64)> = HashMap::new();
+    let mut totals: HashMap<i64, (i64, i64, i64)> = HashMap::new();
     for (&id, n) in &nodes {
         if n.missing {
             continue;
         }
-        let add = (n.direct, i64::from(n.issue));
+        let add = (n.direct, i64::from(n.issue), n.files);
         let mut cur = Some(id);
         let mut hops = 0;
         while let Some(c) = cur {
-            let e = totals.entry(c).or_insert((0, 0));
+            let e = totals.entry(c).or_insert((0, 0, 0));
             e.0 += add.0;
             e.1 += add.1;
+            e.2 += add.2;
             cur = nodes.get(&c).and_then(|n| n.parent);
             hops += 1;
             if hops > 512 {
@@ -292,12 +299,13 @@ pub fn recount_library(conn: &Connection, library_id: i64) -> AppResult<()> {
             }
         }
     }
-    let mut upd = conn
-        .prepare_cached("UPDATE containers SET model_count = ?2, issue_count = ?3 WHERE id = ?1")?;
+    let mut upd = conn.prepare_cached(
+        "UPDATE containers SET model_count = ?2, issue_count = ?3, file_count = ?4 WHERE id = ?1",
+    )?;
     for (id, n) in &nodes {
-        let t = totals.get(id).copied().unwrap_or((0, 0));
+        let t = totals.get(id).copied().unwrap_or((0, 0, 0));
         if t != n.old {
-            upd.execute(params![id, t.0, t.1])?;
+            upd.execute(params![id, t.0, t.1, t.2])?;
         }
     }
     Ok(())

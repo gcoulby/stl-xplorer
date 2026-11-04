@@ -8,7 +8,9 @@ import {
   MoreHorizontal,
   Plus,
   RefreshCw,
+  Settings2,
   ShieldCheck,
+  Tags as TagsIcon,
   TriangleAlert,
 } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
@@ -514,11 +516,41 @@ function TagsSection() {
   const tags = useTags().data ?? [];
   const loc = useUi((s) => s.location);
   const navigate = useUi((s) => s.navigate);
+  const openSettings = useUi((s) => s.openSettings);
   const ask = usePrompt((s) => s.ask);
-  if (tags.length === 0) return null;
   return (
     <div className="max-h-[25%] shrink-0 overflow-y-auto border-t pb-2">
-      <SectionHeader title="Tags" />
+      <SectionHeader title="Tags">
+        <Tip label="All tags">
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            className={cn("size-6", loc.kind === "tags" && "bg-accent")}
+            onClick={() => navigate({ kind: "tags" })}
+          >
+            <TagsIcon className="size-3.5" />
+          </Button>
+        </Tip>
+        <Tip label="Auto tag rules">
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            className="size-6"
+            onClick={() => openSettings("tags")}
+          >
+            <Settings2 className="size-3.5" />
+          </Button>
+        </Tip>
+      </SectionHeader>
+      {tags.length === 0 && (
+        <p className="px-3 text-xs text-muted-foreground">
+          Tag files from their right-click menu, or{" "}
+          <button className="text-primary hover:underline" onClick={() => openSettings("tags")}>
+            tag them from their folder names
+          </button>
+          .
+        </p>
+      )}
       <div className="flex flex-wrap gap-1 px-3">
         {tags.map((t) => {
           const active = loc.kind === "tag" && loc.tagId === t.id;
