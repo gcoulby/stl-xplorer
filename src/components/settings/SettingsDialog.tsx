@@ -19,6 +19,8 @@ import {
   Trash2,
   TriangleAlert,
   Wrench,
+  Info,
+  ExternalLink,
   ArrowDownToLine,
   X,
 } from "lucide-react";
@@ -78,6 +80,7 @@ const TABS: Array<{ id: SettingsTab; label: string; icon: React.ReactNode }> = [
   { id: "vault", label: "Vault", icon: <ShieldCheck /> },
   { id: "appearance", label: "Appearance", icon: <Brush /> },
   { id: "maintenance", label: "Maintenance", icon: <Wrench /> },
+  { id: "about", label: "About", icon: <Info /> },
 ];
 
 export function SettingsDialog() {
@@ -135,6 +138,9 @@ export function SettingsDialog() {
             </TabsContent>
             <TabsContent value="maintenance">
               <MaintenanceTab />
+            </TabsContent>
+            <TabsContent value="about">
+              <AboutTab />
             </TabsContent>
           </div>
         </Tabs>
@@ -1054,6 +1060,69 @@ function AppearanceTab() {
   );
 }
 
+function AboutTab() {
+  const [version, setVersion] = useState<string | null>(null);
+  useEffect(() => {
+    void appVersion().then(setVersion);
+  }, []);
+  const link = (page: Parameters<typeof api.openProjectPage>[0], label: string) => (
+    <Button
+      variant="outline"
+      size="sm"
+      onClick={() =>
+        void api
+          .openProjectPage(page)
+          .catch((e: unknown) => toast.error("Could not open the page", errorMessage(e)))
+      }
+    >
+      <ExternalLink /> {label}
+    </Button>
+  );
+  return (
+    <>
+      <section className="mb-8 flex items-center gap-4">
+        <img src="/logo.svg" alt="" className="size-14" />
+        <div>
+          <h3 className="text-lg font-semibold">STL Xplorer</h3>
+          <p className="text-sm text-muted-foreground selectable">Version {version ?? "…"}</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Browse, preview and send 3D printing models to your slicer straight out of zip, 7z and
+            rar packs.
+          </p>
+        </div>
+      </section>
+      <div className="mb-8 flex flex-wrap gap-2">
+        {link("home", "Project page")}
+        {link("releases", "Release notes")}
+        {link("issues", "Report a problem")}
+      </div>
+      <UpdatesSection />
+      <Section title="Licence">
+        <div className="flex flex-col gap-2 text-xs text-muted-foreground">
+          <p>
+            MIT licence, copyright © 2026 Graham Coulby.{" "}
+            <button
+              type="button"
+              className="text-primary hover:underline"
+              onClick={() => void api.openProjectPage("licence")}
+            >
+              Read the licence
+            </button>
+          </p>
+          <p>
+            Archive reading uses 7-Zip by Igor Pavlov (GNU LGPL, with the unRAR restriction). Its
+            licence is installed alongside the app.
+          </p>
+          <p>
+            Built with substantial AI assistance (Claude, via Claude Code). See the project page for
+            details.
+          </p>
+        </div>
+      </Section>
+    </>
+  );
+}
+
 function UpdatesSection() {
   const { status, autoCheck, setAutoCheck, check, setDialogOpen } = useUpdater();
   const [version, setVersion] = useState<string | null>(null);
@@ -1104,7 +1173,6 @@ function MaintenanceTab() {
   const missing = (settings.data?.missingModels ?? 0) + (settings.data?.missingContainers ?? 0);
   return (
     <>
-      <UpdatesSection />
       <Section
         title="Missing files"
         description="When files disappear they are kept in the index, so tags and orientation come back if the folder returns. Clean up to forget them for good."

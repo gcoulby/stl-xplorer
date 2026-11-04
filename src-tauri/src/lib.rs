@@ -122,6 +122,7 @@ pub fn run() {
             commands::index::archive_problem,
             commands::files::reveal_in_folder,
             commands::files::open_externally,
+            commands::files::open_project_page,
             commands::delete::delete_items,
             commands::packs::find_unpacked,
             commands::packs::delete_unpacked,

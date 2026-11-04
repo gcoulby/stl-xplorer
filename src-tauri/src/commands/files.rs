@@ -110,3 +110,19 @@ pub async fn open_externally(app: AppHandle, model_id: i64) -> AppResult<()> {
     })
     .await
 }
+
+const PROJECT_URL: &str = "https://github.com/gcoulby/stl-xplorer";
+
+/// Open one of the project's web pages in the default browser. Only these fixed pages are
+/// allowed, so the webview can never ask for an arbitrary URL to be opened.
+#[tauri::command]
+pub fn open_project_page(page: String) -> AppResult<()> {
+    let url = match page.as_str() {
+        "home" => PROJECT_URL.to_string(),
+        "releases" => format!("{PROJECT_URL}/releases"),
+        "issues" => format!("{PROJECT_URL}/issues"),
+        "licence" => format!("{PROJECT_URL}/blob/master/LICENSE"),
+        _ => return Err(AppError::Invalid(format!("unknown page: {page}"))),
+    };
+    open_default(Path::new(&url))
+}

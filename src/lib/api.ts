@@ -76,6 +76,8 @@ export const api = {
   revealInFolder: (target: { containerId?: number; modelId?: number }) =>
     call<null>("reveal_in_folder", target),
   openExternally: (modelId: number) => call<null>("open_externally", { modelId }),
+  openProjectPage: (page: "home" | "releases" | "issues" | "licence") =>
+    call<null>("open_project_page", { page }),
   deleteItems: (modelIds: number[], containerIds: number[]) =>
     call<DeleteReport>("delete_items", { modelIds, containerIds }),
   findUnpacked: (scope: number | null) => call<UnpackedCopy[]>("find_unpacked", { scope }),

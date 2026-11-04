@@ -41,7 +41,8 @@ export type SettingsTab =
   | "orientation"
   | "vault"
   | "appearance"
-  | "maintenance";
+  | "maintenance"
+  | "about";
 
 export function treeKey(containerId: number, subpath: string): string {
   return `${containerId}:${subpath}`;

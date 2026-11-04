@@ -12,7 +12,7 @@ Runs on Windows. The code is written to work on macOS too, but that has not been
 
 Get the Windows installer from the [latest release](https://github.com/gcoulby/stl-xplorer/releases/latest). It includes 7-Zip, so 7z and rar archives work straight away. The installer is not code-signed yet, so Windows SmartScreen may warn about an unrecognised app. Choose **More info → Run anyway**.
 
-After that, STL Xplorer checks GitHub for new versions on startup and offers to install them. You can turn this off, or check by hand, in **Settings → Maintenance → Updates**. Version 0.1.0 came out before the updater existed, so install 0.2.0 by hand once.
+After that, STL Xplorer checks GitHub for new versions on startup and offers to install them. You can turn this off, or check by hand, in **Settings → About**. Version 0.1.0 came out before the updater existed, so install 0.2.0 by hand once.
 
 ## Why it exists
 
