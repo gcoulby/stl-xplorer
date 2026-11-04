@@ -9,6 +9,7 @@ use tauri::AppHandle;
 use super::blocking;
 use crate::db::queries;
 use crate::error::{AppError, AppResult};
+use crate::state::AppState;
 use crate::types::DeleteReport;
 
 #[derive(Debug, PartialEq)]
@@ -118,6 +119,48 @@ pub fn mark_deleted(conn: &Connection, target: &Target) -> AppResult<(Vec<i64>, 
     }
 }
 
+/// Send planned items to the bin, then flag them as gone in the index. Each item succeeds or
+/// fails on its own; failures are reported, never fatal.
+pub fn execute(st: &AppState, planned: Vec<Planned>) -> AppResult<DeleteReport> {
+    let mut errors = Vec::new();
+    let mut deleted = Vec::new();
+    let mut done = Vec::new();
+    for p in planned {
+        // Parts already gone are fine; the rest go to the bin together.
+        let existing: Vec<&PathBuf> = p.paths.iter().filter(|x| x.exists()).collect();
+        if !existing.is_empty() {
+            if let Err(e) = trash::delete_all(&existing) {
+                errors.push(format!("Could not delete {}: {e}", p.label));
+                continue;
+            }
+        }
+        deleted.push(p.label.clone());
+        done.push(p);
+    }
+    if !done.is_empty() {
+        let mut conn = st.db.lock()?;
+        let tx = conn.transaction()?;
+        let mut models = Vec::new();
+        let mut archives = Vec::new();
+        let mut libs: Vec<i64> = Vec::new();
+        for p in &done {
+            let (m, c) = mark_deleted(&tx, &p.target)?;
+            models.extend(m);
+            archives.extend(c);
+            if !libs.contains(&p.library_id) {
+                libs.push(p.library_id);
+            }
+        }
+        for lib in libs {
+            queries::recount_library(&tx, lib)?;
+        }
+        queries::refresh_fts(&tx, &models)?;
+        tx.commit()?;
+        st.invalidate_archives(&archives);
+    }
+    Ok(DeleteReport { deleted, errors })
+}
+
 #[tauri::command]
 pub async fn delete_items(
     app: AppHandle,
@@ -126,45 +169,13 @@ pub async fn delete_items(
 ) -> AppResult<DeleteReport> {
     blocking(app, move |_, st| {
         let (planned, mut errors) = plan(&*st.db.lock()?, &model_ids, &container_ids)?;
-        let mut deleted = Vec::new();
-        let mut done = Vec::new();
-        for p in planned {
-            // Parts already gone are fine; the rest go to the bin together.
-            let existing: Vec<&PathBuf> = p.paths.iter().filter(|x| x.exists()).collect();
-            if !existing.is_empty() {
-                if let Err(e) = trash::delete_all(&existing) {
-                    errors.push(format!("Could not delete {}: {e}", p.label));
-                    continue;
-                }
-            }
-            deleted.push(p.label.clone());
-            done.push(p);
-        }
-        if !done.is_empty() {
-            let mut conn = st.db.lock()?;
-            let tx = conn.transaction()?;
-            let mut models = Vec::new();
-            let mut archives = Vec::new();
-            let mut libs: Vec<i64> = Vec::new();
-            for p in &done {
-                let (m, c) = mark_deleted(&tx, &p.target)?;
-                models.extend(m);
-                archives.extend(c);
-                if !libs.contains(&p.library_id) {
-                    libs.push(p.library_id);
-                }
-            }
-            for lib in libs {
-                queries::recount_library(&tx, lib)?;
-            }
-            queries::refresh_fts(&tx, &models)?;
-            tx.commit()?;
-            st.invalidate_archives(&archives);
-        }
-        if deleted.is_empty() && !errors.is_empty() && errors.len() == 1 {
+        let mut report = execute(st, planned)?;
+        errors.append(&mut report.errors);
+        if report.deleted.is_empty() && errors.len() == 1 {
             return Err(AppError::Invalid(errors.remove(0)));
         }
-        Ok(DeleteReport { deleted, errors })
+        report.errors = errors;
+        Ok(report)
     })
     .await
 }

@@ -1,5 +1,7 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
+  ArrowDown,
+  ArrowUp,
   FolderSearch,
   FolderTree,
   ListTree,
@@ -14,7 +16,7 @@ import {
   ArchiveProblemPanel,
   hasProblem,
 } from "@/components/browser/ArchiveProblem";
-import { Breadcrumbs } from "@/components/browser/Breadcrumbs";
+import { AddressBar } from "@/components/browser/AddressBar";
 import { ItemMenuContent } from "@/components/browser/ItemMenu";
 import {
   ArchiveDirIcon,
@@ -24,6 +26,7 @@ import {
   ModelIcon,
   TagDots,
 } from "@/components/browser/ItemVisuals";
+import { ColumnsMenu, FilterMenu, SortMenu } from "@/components/browser/ListToolbar";
 import { SelectionBar } from "@/components/browser/SelectionBar";
 import { Button } from "@/components/ui/button";
 import { ContextMenu, ContextMenuTrigger } from "@/components/ui/menu";
@@ -31,13 +34,14 @@ import { Skeleton } from "@/components/ui/misc";
 import { Tip } from "@/components/ui/overlay";
 import { useOpenInSlicer } from "@/features/actions";
 import { useDeleteConfirm } from "@/features/delete";
+import { applyFilters, typeLabel } from "@/features/filtering";
 import { useListing, type ListItem } from "@/features/listing";
 import { useLibraries, useSlicers } from "@/features/queries";
 import { useSelected } from "@/features/selection";
 import { toast } from "@/features/toast";
 import { api, errorMessage } from "@/lib/api";
 import { cn, formatBytes, formatDate, isMesh, plural } from "@/lib/utils";
-import { treeKey, useUi } from "@/store/ui";
+import { treeKey, useUi, type Columns, type SortKey } from "@/store/ui";
 
 const ROW_H = 34;
 const TILE_MIN_W = 148;
@@ -60,7 +64,14 @@ export function FileList() {
   const loc = useUi((s) => s.location);
   const flat = useUi((s) => s.flat);
   const listing = useListing(loc, flat);
-  const { items } = listing;
+  const filters = useUi((s) => s.filters);
+  const sort = useUi((s) => s.sort);
+  const columns = useUi((s) => s.columns);
+  const items = useMemo(
+    () => applyFilters(listing.items, filters, sort),
+    [listing.items, filters, sort],
+  );
+  const hiddenByFilter = listing.items.length - items.length;
   const viewMode = useUi((s) => s.viewMode);
   const selection = useUi((s) => s.selection);
   const focused = useUi((s) => s.focused);
@@ -268,7 +279,7 @@ export function FileList() {
 
   return (
     <div className="flex h-full min-w-0 flex-col bg-pane">
-      <ListHeader listing={listing} onUp={goUp} />
+      <ListHeader listing={listing} shown={items.length} hidden={hiddenByFilter} onUp={goUp} />
       <ContextMenu>
         <ContextMenuTrigger asChild>
           <div
@@ -293,7 +304,9 @@ export function FileList() {
             ) : (
               <>
                 {problem && <ArchiveProblemBanner container={problem} />}
-                {viewMode === "list" && <ListColumns />}
+                {viewMode === "list" && (
+                  <ListColumns columns={columns} showLocation={listing.showLocation} />
+                )}
                 <div
                   style={{ height: virtualizer.getTotalSize(), position: "relative" }}
                   onMouseDown={(e) => {
@@ -313,6 +326,7 @@ export function FileList() {
                           focused={focused === it.key}
                           previewing={it.type === "model" && it.model.id === previewId}
                           showLocation={listing.showLocation}
+                          columns={columns}
                           onClick={onClick}
                           onDoubleClick={onDoubleClick}
                         />
@@ -357,66 +371,91 @@ export function FileList() {
 
 function ListHeader({
   listing,
+  shown,
+  hidden,
   onUp,
 }: {
   listing: ReturnType<typeof useListing>;
+  shown: number;
+  hidden: number;
   onUp: () => void;
 }) {
   const viewMode = useUi((s) => s.viewMode);
   const setViewMode = useUi((s) => s.setViewMode);
   const flat = useUi((s) => s.flat);
   const setFlat = useUi((s) => s.setFlat);
-  const browsing = useUi((s) => s.location.kind === "container");
-  const count = listing.items.length;
+  const loc = useUi((s) => s.location);
+  const setFilters = useUi((s) => s.setFilters);
+  const browsing = loc.kind === "container";
   return (
-    <div className="flex h-11 shrink-0 items-center gap-2 border-b px-3">
-      <div className="min-w-0 flex-1">
-        {listing.crumbs ? (
-          <Breadcrumbs crumbs={listing.crumbs} onUp={onUp} />
-        ) : (
-          <div className="truncate text-sm font-medium">{listing.title}</div>
-        )}
+    <div className="flex shrink-0 flex-col border-b">
+      <div className="flex h-10 items-center gap-2 px-2">
+        <AddressBar
+          crumbs={listing.crumbs}
+          container={listing.container}
+          subpath={loc.kind === "container" ? loc.subpath.replace(/^\/+|\/+$/g, "") : ""}
+          title={listing.title}
+          onUp={onUp}
+        />
       </div>
-      <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-        {count > 0 && plural(count, flat && browsing ? "file" : "item")}
-      </span>
-      {browsing && (
-        <div className="flex shrink-0 rounded-md border p-0.5">
-          {([false, true] as const).map((f) => (
-            <Tip
-              key={String(f)}
-              label={f ? "Every file below here in one list" : "Folders and archives"}
-            >
-              <Button
-                variant="ghost"
-                size="xs"
-                className={cn(
-                  "h-6 gap-1 px-1.5 text-xs",
-                  flat === f ? "bg-accent text-foreground" : "text-muted-foreground",
-                )}
-                onClick={() => setFlat(f)}
-                aria-pressed={flat === f}
+      <div className="flex h-9 items-center gap-1.5 px-2">
+        {browsing && (
+          <div className="flex shrink-0 rounded-md border p-0.5">
+            {([false, true] as const).map((f) => (
+              <Tip
+                key={String(f)}
+                label={f ? "Every file below here in one list" : "Folders and archives"}
               >
-                {f ? <ListTree className="size-3.5" /> : <FolderTree className="size-3.5" />}
-                {f ? "All files" : "Folders"}
-              </Button>
-            </Tip>
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  className={cn(
+                    "h-6 gap-1 px-1.5 text-xs",
+                    flat === f ? "bg-accent text-foreground" : "text-muted-foreground",
+                  )}
+                  onClick={() => setFlat(f)}
+                  aria-pressed={flat === f}
+                >
+                  {f ? <ListTree className="size-3.5" /> : <FolderTree className="size-3.5" />}
+                  {f ? "All files" : "Folders"}
+                </Button>
+              </Tip>
+            ))}
+          </div>
+        )}
+        <span className="min-w-0 truncate px-1 text-xs text-muted-foreground tabular-nums">
+          {shown > 0 && plural(shown, flat && browsing ? "file" : "item")}
+          {hidden > 0 && (
+            <>
+              {" · "}
+              <button
+                type="button"
+                className="text-primary hover:underline"
+                onClick={() => setFilters({ types: [], tagIds: [] })}
+              >
+                {hidden.toLocaleString("en-GB")} hidden by filters
+              </button>
+            </>
+          )}
+        </span>
+        <div className="flex-1" />
+        <FilterMenu />
+        <SortMenu />
+        <div className="flex shrink-0 items-center rounded-md border p-0.5">
+          {(["list", "grid"] as const).map((m) => (
+            <Button
+              key={m}
+              variant="ghost"
+              size="icon-xs"
+              className={cn("size-6", viewMode === m && "bg-accent text-foreground")}
+              onClick={() => setViewMode(m)}
+              aria-label={m === "list" ? "List view" : "Grid view"}
+            >
+              {m === "list" ? <ListIconSvg /> : <GridIconSvg />}
+            </Button>
           ))}
+          {viewMode === "list" && <ColumnsMenu />}
         </div>
-      )}
-      <div className="flex shrink-0 rounded-md border p-0.5">
-        {(["list", "grid"] as const).map((m) => (
-          <Button
-            key={m}
-            variant="ghost"
-            size="icon-xs"
-            className={cn("size-6", viewMode === m && "bg-accent text-foreground")}
-            onClick={() => setViewMode(m)}
-            aria-label={m === "list" ? "List view" : "Grid view"}
-          >
-            {m === "list" ? <ListIconSvg /> : <GridIconSvg />}
-          </Button>
-        ))}
       </div>
     </div>
   );
@@ -443,12 +482,50 @@ function GridIconSvg() {
   );
 }
 
-function ListColumns() {
+function SortHeader({ k, label, className }: { k: SortKey; label: string; className?: string }) {
+  const sort = useUi((s) => s.sort);
+  const setSort = useUi((s) => s.setSort);
+  const active = sort.key === k;
   return (
-    <div className="sticky top-0 z-10 flex h-7 items-center gap-3 border-b bg-pane/95 px-3 text-[11px] font-medium tracking-wide text-muted-foreground uppercase backdrop-blur">
-      <span className="flex-1">Name</span>
-      <span className="w-20 text-right">Size</span>
-      <span className="hidden w-24 text-right @[34rem]:block">Modified</span>
+    <button
+      type="button"
+      onClick={() =>
+        setSort(
+          active
+            ? { key: k, desc: !sort.desc }
+            : { key: k, desc: k === "size" || k === "modified" },
+        )
+      }
+      className={cn(
+        "flex items-center gap-0.5 uppercase hover:text-foreground",
+        active && "text-foreground",
+        className,
+      )}
+    >
+      {label}
+      {active && (sort.desc ? <ArrowDown className="size-3" /> : <ArrowUp className="size-3" />)}
+    </button>
+  );
+}
+
+function ListColumns({ columns, showLocation }: { columns: Columns; showLocation: boolean }) {
+  return (
+    <div className="sticky top-0 z-10 flex h-7 items-center gap-3 border-b bg-pane/95 px-3 text-[11px] font-medium tracking-wide text-muted-foreground backdrop-blur">
+      <span className="flex min-w-0 flex-1">
+        <SortHeader k="name" label="Name" />
+      </span>
+      {showLocation && columns.location && (
+        <span className="w-[30%] min-w-0 uppercase">Location</span>
+      )}
+      {columns.type && <SortHeader k="type" label="Type" className="w-14" />}
+      {columns.size && <SortHeader k="size" label="Size" className="w-20 justify-end" />}
+      {columns.modified && (
+        <SortHeader
+          k="modified"
+          label="Modified"
+          className="hidden w-24 justify-end @[34rem]:flex"
+        />
+      )}
     </div>
   );
 }
@@ -512,9 +589,10 @@ function ListRow({
   focused,
   previewing,
   showLocation,
+  columns,
   onClick,
   onDoubleClick,
-}: RowProps & { top: number; showLocation: boolean }) {
+}: RowProps & { top: number; showLocation: boolean; columns: Columns }) {
   const size =
     it.type === "model"
       ? it.model.size
@@ -547,20 +625,32 @@ function ListRow({
         </span>
         {it.type === "container" && <ContainerBadges c={it.container} compact />}
         {it.type === "model" && <ModelBadges m={it.model} compact />}
-        <TagDots ids={tagIds} />
+        {columns.tags && <TagDots ids={tagIds} />}
         {sub && <span className="shrink-0 text-xs text-muted-foreground">{sub}</span>}
-        {showLocation && location && (
-          <span className="truncate text-xs text-muted-foreground" title={location}>
-            {location}
-          </span>
-        )}
       </div>
-      <span className="w-20 shrink-0 text-right text-xs text-muted-foreground tabular-nums">
-        {size !== null ? formatBytes(size) : ""}
-      </span>
-      <span className="hidden w-24 shrink-0 text-right text-xs text-muted-foreground tabular-nums @[34rem]:block">
-        {mtime ? formatDate(mtime) : ""}
-      </span>
+      {showLocation && columns.location && (
+        <span
+          className="w-[30%] min-w-0 shrink-0 truncate text-xs text-muted-foreground"
+          title={location}
+        >
+          {location || "Here"}
+        </span>
+      )}
+      {columns.type && (
+        <span className="w-14 shrink-0 truncate text-xs text-muted-foreground">
+          {typeLabel(it)}
+        </span>
+      )}
+      {columns.size && (
+        <span className="w-20 shrink-0 text-right text-xs text-muted-foreground tabular-nums">
+          {size !== null ? formatBytes(size) : ""}
+        </span>
+      )}
+      {columns.modified && (
+        <span className="hidden w-24 shrink-0 text-right text-xs text-muted-foreground tabular-nums @[34rem]:block">
+          {mtime ? formatDate(mtime) : ""}
+        </span>
+      )}
     </div>
   );
 }

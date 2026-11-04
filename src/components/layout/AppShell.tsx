@@ -5,6 +5,7 @@ import { FileList } from "@/components/browser/FileList";
 import { Sidebar } from "@/components/browser/Sidebar";
 import { CommandPalette } from "@/components/layout/CommandPalette";
 import { DeleteDialog } from "@/components/layout/DeleteDialog";
+import { PackDialogs } from "@/components/layout/PackDialogs";
 import { PromptDialog } from "@/components/layout/PromptDialog";
 import { StatusBar } from "@/components/layout/StatusBar";
 import { Toaster } from "@/components/layout/Toaster";
@@ -26,6 +27,13 @@ function useGlobalShortcuts() {
       if ((e.ctrlKey || e.metaKey) && e.key === ",") {
         e.preventDefault();
         ui.openSettings();
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "l") {
+        e.preventDefault();
+        document
+          .querySelector<HTMLButtonElement>("[data-address-bar] button[aria-label='Edit path']")
+          ?.click();
         return;
       }
       if (isTypingTarget(e.target)) return;
@@ -73,6 +81,7 @@ export function AppShell() {
       <SettingsDialog />
       <PromptDialog />
       <DeleteDialog />
+      <PackDialogs />
       <Toaster />
     </div>
   );

@@ -11,6 +11,7 @@ export function StatusBar() {
   const openSettings = useUi((s) => s.openSettings);
   const navigate = useUi((s) => s.navigate);
   const active = Object.values(scans);
+  const pack = useUi((s) => s.packJob);
   const total = libs.filter((l) => l.enabled).reduce((n, l) => n + l.modelCount, 0);
   const issues = libs.filter((l) => l.enabled).reduce((n, l) => n + l.issueCount, 0);
 
@@ -35,6 +36,15 @@ export function StatusBar() {
         <span className="flex items-center gap-1.5">
           <CircleCheck className="size-3 text-success" />
           Up to date
+        </span>
+      )}
+      {pack && (
+        <span className="flex min-w-0 items-center gap-1.5">
+          <LoaderCircle className="size-3 shrink-0 animate-spin text-amber-400" />
+          <span className="truncate">
+            Zipping {pack.label}{" "}
+            {pack.total > 0 ? `${Math.round((pack.done / pack.total) * 100)}%` : ""}
+          </span>
         </span>
       )}
       <span className="tabular-nums">{plural(total, "model")}</span>

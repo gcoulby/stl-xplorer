@@ -10,6 +10,7 @@ use crate::error::{AppError, AppResult};
 const MIGRATIONS: &[(i64, &str)] = &[
     (1, include_str!("migrations/0001_init.sql")),
     (2, include_str!("migrations/0002_files_autotags.sql")),
+    (3, include_str!("migrations/0003_archive_mtimes.sql")),
 ];
 
 pub fn open_connection(path: &Path) -> AppResult<Connection> {

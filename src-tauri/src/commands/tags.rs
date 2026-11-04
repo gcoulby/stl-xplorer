@@ -221,6 +221,32 @@ pub async fn tagged_items(app: AppHandle, tag_id: i64) -> AppResult<TaggedItems>
 }
 
 #[tauri::command]
+pub async fn set_autotag_on_index(app: AppHandle, enabled: bool) -> AppResult<()> {
+    blocking(app, move |_, st| {
+        queries::set_setting(
+            &*st.db.lock()?,
+            crate::autotag::ON_INDEX_KEY,
+            if enabled { "1" } else { "0" },
+        )
+    })
+    .await
+}
+
+/// Run every rule over every file now. Returns how many files gained or lost a tag.
+#[tauri::command]
+pub async fn apply_auto_tags(app: AppHandle) -> AppResult<usize> {
+    blocking(app, |_, st| {
+        let mut conn = st.db.lock()?;
+        let tx = conn.transaction()?;
+        let changed = crate::autotag::apply(&tx, None, None)?;
+        queries::refresh_fts(&tx, &changed)?;
+        tx.commit()?;
+        Ok(changed.len())
+    })
+    .await
+}
+
+#[tauri::command]
 pub async fn suggest_tags(app: AppHandle) -> AppResult<Vec<TagSuggestion>> {
     blocking(app, |_, st| crate::autotag::suggest(&*st.db.lock()?, 40)).await
 }

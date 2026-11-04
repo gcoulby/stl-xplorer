@@ -90,6 +90,19 @@ impl ArchiveReader for ZipReader {
                 is_dir: f.is_dir(),
                 encrypted,
                 is_link: f.is_symlink(),
+                mtime: f
+                    .last_modified()
+                    .map(|t| {
+                        super::civil_to_unix(
+                            i64::from(t.year()),
+                            i64::from(t.month()),
+                            i64::from(t.day()),
+                            i64::from(t.hour()),
+                            i64::from(t.minute()),
+                            i64::from(t.second()),
+                        )
+                    })
+                    .unwrap_or(0),
             });
         }
         Ok(listing)

@@ -2,6 +2,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   Copy,
   Eye,
+  FileArchive,
+  FolderX,
   ExternalLink,
   FolderInput,
   FolderOpen,
@@ -34,6 +36,7 @@ import {
 } from "@/features/actions";
 import type { ListItem } from "@/features/listing";
 import { deletable, useDeleteConfirm } from "@/features/delete";
+import { usePacks, zippable } from "@/features/packs";
 import { qk, useCollections, useSlicers, useTags } from "@/features/queries";
 import { usePrompt, type SelectedInfo } from "@/features/selection";
 import { toast } from "@/features/toast";
@@ -59,6 +62,8 @@ export function ItemMenuContent({
   const collectionAdd = useCollectionAdd();
   const ask = usePrompt((s) => s.ask);
   const askDelete = useDeleteConfirm((s) => s.ask);
+  const askZip = usePacks((s) => s.askZip);
+  const findUnpacked = usePacks((s) => s.findUnpacked);
 
   const single = sel.items.length === 1 ? sel.items[0] : undefined;
   const def = slicers.find((s) => s.isDefault);
@@ -241,6 +246,30 @@ export function ItemMenuContent({
           {allPacks ? "Unmark as pack" : "Mark as pack"}
         </ContextMenuItem>
       )}
+      {(() => {
+        const folders = zippable(
+          sel.items.flatMap((i) => (i.type === "container" ? [i.container] : [])),
+        );
+        if (folders.length === 0) return null;
+        return (
+          <>
+            <ContextMenuSeparator />
+            <ContextMenuItem onSelect={() => askZip(folders)}>
+              <FileArchive />
+              {folders.length === 1 ? "Zip folder…" : `Zip ${folders.length} folders…`}
+            </ContextMenuItem>
+            {single?.type === "container" && (
+              <ContextMenuItem
+                onSelect={() =>
+                  findUnpacked({ id: single.container.id, name: single.container.name })
+                }
+              >
+                <FolderX /> Find unpacked copies here…
+              </ContextMenuItem>
+            )}
+          </>
+        );
+      })()}
       {sel.vaultable && (
         <>
           <ContextMenuSeparator />

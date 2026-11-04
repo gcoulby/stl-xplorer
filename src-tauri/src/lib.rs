@@ -5,6 +5,7 @@ mod db;
 mod error;
 mod index;
 mod orientation;
+mod packs;
 mod preview;
 mod protocol;
 mod slicer;
@@ -121,6 +122,12 @@ pub fn run() {
             commands::files::reveal_in_folder,
             commands::files::open_externally,
             commands::delete::delete_items,
+            commands::packs::find_unpacked,
+            commands::packs::delete_unpacked,
+            commands::packs::zip_folders,
+            commands::index::resolve_location,
+            commands::tags::set_autotag_on_index,
+            commands::tags::apply_auto_tags,
             commands::tags::list_collections,
             commands::tags::create_collection,
             commands::tags::rename_collection,

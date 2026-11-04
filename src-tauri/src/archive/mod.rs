@@ -22,6 +22,35 @@ pub struct Entry {
     pub is_dir: bool,
     pub encrypted: bool,
     pub is_link: bool,
+    /// Seconds since 1970 as stored in the archive (usually local time), 0 when unknown.
+    pub mtime: i64,
+}
+
+/// Seconds since 1970 for a calendar date and time, treated as UTC.
+pub fn civil_to_unix(y: i64, mo: i64, d: i64, h: i64, mi: i64, s: i64) -> i64 {
+    // Howard Hinnant's days-from-civil.
+    let y = if mo <= 2 { y - 1 } else { y };
+    let era = y.div_euclid(400);
+    let yoe = y - era * 400;
+    let mp = (mo + 9) % 12;
+    let doy = (153 * mp + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    let days = era * 146_097 + doe - 719_468;
+    days * 86_400 + h * 3600 + mi * 60 + s
+}
+
+/// 7-Zip's `Modified = 2021-06-06 12:34:56.1234567`.
+pub fn parse_7z_time(s: &str) -> i64 {
+    let nums: Vec<i64> = s
+        .split(|c: char| !c.is_ascii_digit())
+        .filter(|p| !p.is_empty())
+        .take(6)
+        .filter_map(|p| p.parse().ok())
+        .collect();
+    match nums.as_slice() {
+        [y, mo, d, h, mi, sec, ..] if *y >= 1980 => civil_to_unix(*y, *mo, *d, *h, *mi, *sec),
+        _ => 0,
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -129,6 +158,13 @@ pub fn safe_join(dest: &Path, rel: &str) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn archive_times() {
+        assert_eq!(civil_to_unix(1970, 1, 1, 0, 0, 0), 0);
+        assert_eq!(parse_7z_time("2021-06-06 12:34:56.1234567"), 1_622_982_896);
+        assert_eq!(parse_7z_time(""), 0);
+    }
 
     #[test]
     fn sanitises_normal_paths() {

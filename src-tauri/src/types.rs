@@ -272,6 +272,8 @@ pub struct AppSettings {
     pub missing_models: i64,
     pub missing_containers: i64,
     pub data_dir: String,
+    /// Apply auto-tag rules to new and changed files while indexing.
+    pub autotag_on_index: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -286,4 +288,41 @@ pub struct VaultReport {
 pub struct DeleteReport {
     pub deleted: Vec<String>,
     pub errors: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UnpackedCopy {
+    pub folder: ContainerInfo,
+    pub archive: ContainerInfo,
+    pub files: u64,
+    /// Files found in the archive at the same size. Equal to `files` when safe to delete.
+    pub matched: u64,
+    pub bytes: u64,
+    pub mismatched: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ZipReport {
+    pub zipped: Vec<String>,
+    /// Folders whose zip already existed and matched.
+    pub already: Vec<String>,
+    pub deleted: Vec<String>,
+    pub errors: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PackProgress {
+    pub label: String,
+    pub done: u64,
+    pub total: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResolvedLocation {
+    pub container_id: i64,
+    pub subpath: String,
 }

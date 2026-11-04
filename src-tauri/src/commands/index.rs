@@ -8,7 +8,8 @@ use crate::db::queries::{self, CONTAINER_COLS, MODEL_COLS};
 use crate::error::AppResult;
 use crate::orientation;
 use crate::types::{
-    BrowseResult, ContainerInfo, ModelDetail, ModelInfo, ProblemArchive, Rotation, VirtualDir,
+    BrowseResult, ContainerInfo, ModelDetail, ModelInfo, ProblemArchive, ResolvedLocation,
+    Rotation, VirtualDir,
 };
 use crate::util::is_mesh_ext;
 
@@ -246,6 +247,86 @@ pub async fn browse(
     .await
 }
 
+fn norm(p: &str) -> String {
+    p.replace('\\', "/").trim_end_matches('/').to_lowercase()
+}
+
+/// Turn a typed path into a place to browse: a folder, an archive, or a folder inside one.
+pub fn resolve_location_impl(conn: &Connection, input: &str) -> AppResult<ResolvedLocation> {
+    let typed = input.trim().trim_matches('"');
+    let want = norm(typed);
+    if want.is_empty() {
+        return Err(crate::error::AppError::Invalid("Type a path".into()));
+    }
+    let mut stmt = conn.prepare_cached(
+        "SELECT c.id, c.path, c.kind FROM containers c JOIN libraries l ON l.id = c.library_id
+         WHERE c.missing = 0 AND l.enabled = 1 AND c.entry_path IS NULL",
+    )?;
+    let mut best: Option<(i64, String, String)> = None;
+    for row in stmt.query_map([], |r| {
+        Ok((
+            r.get::<_, i64>(0)?,
+            r.get::<_, String>(1)?,
+            r.get::<_, String>(2)?,
+        ))
+    })? {
+        let (id, path, kind) = row?;
+        let p = norm(&path);
+        let fits = want == p || want.starts_with(&format!("{p}/"));
+        if fits && best.as_ref().is_none_or(|b| norm(&b.1).len() < p.len()) {
+            best = Some((id, path, kind));
+        }
+    }
+    let Some((id, path, kind)) = best else {
+        return Err(crate::error::AppError::NotFound(format!(
+            "{typed} is not inside any of your libraries"
+        )));
+    };
+    // What is left after the container, in the user's spelling.
+    let rest: String = typed
+        .replace('\\', "/")
+        .chars()
+        .skip(norm(&path).chars().count())
+        .collect::<String>()
+        .trim_matches('/')
+        .to_string();
+    if rest.is_empty() {
+        return Ok(ResolvedLocation {
+            container_id: id,
+            subpath: String::new(),
+        });
+    }
+    if kind == "folder" {
+        return Err(crate::error::AppError::NotFound(format!(
+            "No folder called {rest} was indexed there"
+        )));
+    }
+    // Inside an archive: find the directory with the archive's own capitalisation.
+    let want_dir = format!("{}/", rest.to_lowercase());
+    let mut stmt =
+        conn.prepare_cached("SELECT rel_path FROM models WHERE container_id = ?1 AND missing = 0")?;
+    for row in stmt.query_map([id], |r| r.get::<_, String>(0))? {
+        let rel = row?;
+        if rel.to_lowercase().starts_with(&want_dir) {
+            return Ok(ResolvedLocation {
+                container_id: id,
+                subpath: rel[..want_dir.len() - 1].to_string(),
+            });
+        }
+    }
+    Err(crate::error::AppError::NotFound(format!(
+        "No folder called {rest} in that archive"
+    )))
+}
+
+#[tauri::command]
+pub async fn resolve_location(app: AppHandle, path: String) -> AppResult<ResolvedLocation> {
+    blocking(app, move |_, st| {
+        resolve_location_impl(&*st.db.lock()?, &path)
+    })
+    .await
+}
+
 fn file_name(p: &str) -> String {
     std::path::Path::new(p)
         .file_name()
@@ -470,6 +551,27 @@ mod tests {
         assert_eq!(inside.models.len(), 2);
         assert_eq!(loc(&inside, "one.stl"), "");
         assert_eq!(loc(&inside, "two.jpg"), "b");
+    }
+
+    #[test]
+    fn resolves_typed_paths() {
+        let conn = crate::db::test_conn();
+        conn.execute_batch(
+            r"INSERT INTO libraries (id, name, path) VALUES (1, 'L', 'T:\Lib');
+             INSERT INTO containers (id, library_id, parent_id, kind, path, name) VALUES
+               (1, 1, NULL, 'folder', 'T:\Lib', 'L'),
+               (2, 1, 1, 'folder', 'T:\Lib\Orks', 'Orks'),
+               (3, 1, 2, 'zip', 'T:\Lib\Orks\Boyz.zip', 'Boyz.zip');
+             INSERT INTO models (container_id, library_id, rel_path, name, ext) VALUES
+               (3, 1, 'Big Boyz/Nob/nob.stl', 'nob.stl', 'stl');",
+        )
+        .expect("seed");
+        let r = resolve_location_impl(&conn, "t:/lib/orks/").expect("folder");
+        assert_eq!((r.container_id, r.subpath.as_str()), (2, ""));
+        let r = resolve_location_impl(&conn, r"T:\Lib\Orks\boyz.zip\big boyz\nob").expect("inside");
+        assert_eq!((r.container_id, r.subpath.as_str()), (3, "Big Boyz/Nob"));
+        assert!(resolve_location_impl(&conn, r"T:\Lib\Elves").is_err());
+        assert!(resolve_location_impl(&conn, r"C:\Elsewhere").is_err());
     }
 
     #[test]

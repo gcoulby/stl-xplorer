@@ -205,6 +205,7 @@ pub async fn get_settings(app: AppHandle) -> AppResult<AppSettings> {
             missing_models: count("SELECT COUNT(*) FROM models WHERE missing = 1")?,
             missing_containers: count("SELECT COUNT(*) FROM containers WHERE missing = 1")?,
             data_dir: st.data_dir.to_string_lossy().into_owned(),
+            autotag_on_index: crate::autotag::enabled_on_index(&conn)?,
         })
     })
     .await

@@ -1,7 +1,26 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-import type { ScanProgress } from "@/types";
+import type { PackProgress, ScanProgress } from "@/types";
+
+export type SortKey = "name" | "size" | "modified" | "type";
+export interface Sort {
+  key: SortKey;
+  desc: boolean;
+}
+/** File types the list can be narrowed to. */
+export type TypeFilter = "stl" | "3mf" | "obj" | "image" | "pdf";
+export interface Filters {
+  types: TypeFilter[];
+  tagIds: number[];
+}
+export interface Columns {
+  type: boolean;
+  size: boolean;
+  modified: boolean;
+  location: boolean;
+  tags: boolean;
+}
 
 export type Location =
   | { kind: "none" }
@@ -45,6 +64,11 @@ interface UiState {
   viewMode: ViewMode;
   /** Show every file below a folder or archive in one list instead of its subfolders. */
   flat: boolean;
+  sort: Sort;
+  filters: Filters;
+  columns: Columns;
+  /** Zipping in progress, for the status bar. */
+  packJob: PackProgress | null;
   theme: Theme;
 
   settingsOpen: boolean;
@@ -62,6 +86,10 @@ interface UiState {
   toggleExpanded: (key: string, open?: boolean) => void;
   setViewMode: (m: ViewMode) => void;
   setFlat: (flat: boolean) => void;
+  setSort: (sort: Sort) => void;
+  setFilters: (f: Partial<Filters>) => void;
+  setColumns: (c: Partial<Columns>) => void;
+  setPackJob: (p: PackProgress | null) => void;
   setTheme: (t: Theme) => void;
   openSettings: (tab?: SettingsTab) => void;
   closeSettings: () => void;
@@ -88,6 +116,10 @@ export const useUi = create<UiState>()(
       expanded: [],
       viewMode: "list",
       flat: false,
+      sort: { key: "name", desc: false },
+      filters: { types: [], tagIds: [] },
+      columns: { type: false, size: true, modified: true, location: true, tags: true },
+      packJob: null,
       theme: "dark",
       settingsOpen: false,
       settingsTab: "libraries",
@@ -155,6 +187,10 @@ export const useUi = create<UiState>()(
       },
       setViewMode: (m) => set({ viewMode: m }),
       setFlat: (flat) => set({ flat, selection: [], anchor: null, focused: null }),
+      setSort: (sort) => set({ sort }),
+      setFilters: (f) => set({ filters: { ...get().filters, ...f } }),
+      setColumns: (c) => set({ columns: { ...get().columns, ...c } }),
+      setPackJob: (p) => set({ packJob: p }),
       setTheme: (t) => set({ theme: t }),
       openSettings: (tab) => set({ settingsOpen: true, ...(tab ? { settingsTab: tab } : {}) }),
       closeSettings: () => set({ settingsOpen: false }),
@@ -175,6 +211,9 @@ export const useUi = create<UiState>()(
         expanded: s.expanded,
         viewMode: s.viewMode,
         flat: s.flat,
+        sort: s.sort,
+        filters: s.filters,
+        columns: s.columns,
         theme: s.theme,
       }),
     },

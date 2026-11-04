@@ -42,6 +42,12 @@ everything up to date while the app is open.
 - The middle pane lists what is in the selected folder. Use **Folders** to step through
   subfolders one level at a time, or **All files** to see everything below that point in one
   list, with where each file sits.
+- The address bar above the list shows where you are. Click a part of it to jump there, or
+  click the empty space (or press **Ctrl L**) to type or paste a path, including folders
+  inside an archive.
+- **Filter** narrows the list to file types (STL, 3MF, OBJ, images, PDFs) or tags. **Sort**
+  orders by name, size, last modified or type, and so does clicking a column heading. The
+  columns button picks which columns the list shows.
 - Switch between list and grid with the buttons at the top right of the list.
 - Badges on archives tell you about them up front:
   - **Solid** means the first preview takes a moment while the pack is unpacked into the cache.
@@ -84,6 +90,8 @@ PDFs in a selection are left out.
   - A keyword ending in `*` matches the start of a word, so `ork*` also catches orks and orkz.
   - The suggestions list offers words that crop up across many of your folder names.
   - Tags you add by hand are never removed by a rule.
+  - Switch off **Tag new files while indexing** to apply rules only when you press **Apply
+    rules to everything now**.
 - **Collections** group packs together. Right-click a folder or archive and choose **Add to
   collection**.
 
@@ -93,6 +101,18 @@ If an archive cannot be read, the status bar says how many need attention. Click
 list. Opening one of them explains the problem and how to fix it. For example, a split archive
 lists which parts are there, so you can download the missing ones. **Show in folder** takes you
 to the files.
+
+### Tidying up unpacked folders
+
+- **Find unpacked copies** (Settings → Maintenance, the command palette, or right-click a
+  folder) lists folders that sit next to an archive of the same name and whose every file is
+  inside it. Tick the ones to remove and they go to the Recycle Bin. Folders with anything the
+  archive lacks are shown but cannot be ticked.
+- **Zip folder** (right-click one or more folders) writes `<folder>.zip` beside each folder. The
+  zip is read back and compared with the folder before the folder is removed. If a zip with that
+  name already exists and matches, it is used as it is. If it differs, both are left alone.
+- **Delete** (right-click, the bin icon or the Delete key) sends files, folders and archives to
+  the Recycle Bin after asking first. Split archives go with all their parts.
 
 ### The vault
 
@@ -110,6 +130,8 @@ original where it was.
 | Space          | Add to or remove from the selection |
 | Enter          | Open in the default slicer          |
 | Backspace      | Up one folder                       |
+| Delete         | Delete (asks first)                 |
+| Ctrl L         | Type a path                         |
 | /              | Search                              |
 | Ctrl K         | Command palette                     |
 | R              | Reset the camera                    |

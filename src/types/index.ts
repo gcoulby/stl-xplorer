@@ -228,6 +228,7 @@ export interface AppSettings {
   missingModels: number;
   missingContainers: number;
   dataDir: string;
+  autotagOnIndex: boolean;
 }
 
 export interface VaultReport {
@@ -238,6 +239,33 @@ export interface VaultReport {
 export interface DeleteReport {
   deleted: string[];
   errors: string[];
+}
+
+export interface UnpackedCopy {
+  folder: ContainerInfo;
+  archive: ContainerInfo;
+  files: number;
+  matched: number;
+  bytes: number;
+  mismatched: string[];
+}
+
+export interface ZipReport {
+  zipped: string[];
+  already: string[];
+  deleted: string[];
+  errors: string[];
+}
+
+export interface PackProgress {
+  label: string;
+  done: number;
+  total: number;
+}
+
+export interface ResolvedLocation {
+  containerId: number;
+  subpath: string;
 }
 
 export interface AppErrorPayload {

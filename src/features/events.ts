@@ -5,7 +5,7 @@ import { useEffect } from "react";
 import { invalidateIndex } from "@/features/queries";
 import { toast } from "@/features/toast";
 import { useUi } from "@/store/ui";
-import type { ScanFinished, ScanProgress } from "@/types";
+import type { PackProgress, ScanFinished, ScanProgress } from "@/types";
 
 /** Wire backend scan events into the status bar and the query cache. */
 export function useScanEvents() {
@@ -13,6 +13,11 @@ export function useScanEvents() {
   useEffect(() => {
     const offs: Array<Promise<() => void>> = [];
     offs.push(listen<ScanProgress>("scan-progress", (e) => useUi.getState().setScan(e.payload)));
+    offs.push(
+      listen<PackProgress>("pack-progress", (e) =>
+        useUi.getState().setPackJob(e.payload.label ? e.payload : null),
+      ),
+    );
     offs.push(
       listen<ScanFinished>("scan-finished", (e) => {
         const f = e.payload;

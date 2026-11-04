@@ -2,6 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   Eraser,
   FolderPlus,
+  FolderX,
   LayoutGrid,
   Layers,
   List,
@@ -25,6 +26,7 @@ import {
   CommandShortcut,
 } from "@/components/ui/command";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/overlay";
+import { usePacks } from "@/features/packs";
 import { useCollections, useLibraries, useSearch } from "@/features/queries";
 import { toast } from "@/features/toast";
 import { api, errorMessage } from "@/lib/api";
@@ -142,6 +144,12 @@ export function CommandPalette() {
                     void api
                       .rescanAll()
                       .catch((e: unknown) => toast.error("Rescan failed", errorMessage(e))),
+                },
+                {
+                  id: "unpacked",
+                  label: "Find unpacked copies of archives",
+                  icon: <FolderX />,
+                  act: () => usePacks.getState().findUnpacked({ id: null, name: "your libraries" }),
                 },
                 {
                   id: "addlib",

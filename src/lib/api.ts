@@ -18,6 +18,9 @@ import type {
   SlicerInput,
   SlicerPreset,
   ProblemArchive,
+  ResolvedLocation,
+  UnpackedCopy,
+  ZipReport,
   Tag,
   TagSuggestion,
   TaggedItems,
@@ -75,6 +78,13 @@ export const api = {
   openExternally: (modelId: number) => call<null>("open_externally", { modelId }),
   deleteItems: (modelIds: number[], containerIds: number[]) =>
     call<DeleteReport>("delete_items", { modelIds, containerIds }),
+  findUnpacked: (scope: number | null) => call<UnpackedCopy[]>("find_unpacked", { scope }),
+  deleteUnpacked: (folderIds: number[]) => call<DeleteReport>("delete_unpacked", { folderIds }),
+  zipFolders: (containerIds: number[], deleteAfter: boolean) =>
+    call<ZipReport>("zip_folders", { containerIds, deleteAfter }),
+  resolveLocation: (path: string) => call<ResolvedLocation>("resolve_location", { path }),
+  setAutotagOnIndex: (enabled: boolean) => call<null>("set_autotag_on_index", { enabled }),
+  applyAutoTags: () => call<number>("apply_auto_tags"),
   modelDetail: (id: number) => call<ModelDetail>("model_detail", { id }),
   containerDetail: (id: number) => call<ContainerInfo>("container_detail", { id }),
   setModelRotation: (modelIds: number[], rotation: Rotation | null) =>

@@ -76,6 +76,13 @@ fn load_rules(conn: &Connection, only_tag: Option<i64>) -> AppResult<Vec<Rule>> 
     Ok(out)
 }
 
+pub const ON_INDEX_KEY: &str = "autotag_on_index";
+
+/// Whether scans apply the rules. On unless the user turned it off.
+pub fn enabled_on_index(conn: &Connection) -> AppResult<bool> {
+    Ok(crate::db::queries::get_setting(conn, ON_INDEX_KEY)?.as_deref() != Some("0"))
+}
+
 /// The text a rule is matched against: everything below the library folder.
 const HAYSTACK_SQL: &str = "SELECT m.id,
    CASE WHEN c.kind = 'folder' THEN m.rel_path ELSE c.path || '/' || m.rel_path END,

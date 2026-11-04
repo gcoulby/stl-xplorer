@@ -476,6 +476,7 @@ pub fn parse_slt(text: &str) -> Listing {
                 is_dir,
                 encrypted,
                 is_link,
+                mtime: get("Modified").map(super::parse_7z_time).unwrap_or(0),
             });
         }
         cur.clear();

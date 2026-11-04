@@ -3,6 +3,7 @@ pub mod files;
 pub mod index;
 pub mod library;
 pub mod mesh;
+pub mod packs;
 pub mod search;
 pub mod slicer;
 pub mod tags;

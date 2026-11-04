@@ -24,21 +24,23 @@ export function TopBar() {
 
   return (
     <div
-      className="flex h-12 shrink-0 items-center gap-3 border-b bg-pane px-3"
+      className="grid h-12 shrink-0 grid-cols-[1fr_minmax(0,46rem)_1fr] items-center gap-3 border-b bg-pane px-3"
       data-tauri-drag-region
     >
-      <div className="flex items-center gap-2 pr-2" data-tauri-drag-region>
-        <img src="/logo.svg" alt="" className="size-6" draggable={false} />
-        <span className="text-sm font-semibold tracking-tight" data-tauri-drag-region>
-          STL Xplorer
-        </span>
+      <div className="flex min-w-0 items-center gap-2" data-tauri-drag-region>
+        <div className="flex items-center gap-2 pr-2" data-tauri-drag-region>
+          <img src="/logo.svg" alt="" className="size-6" draggable={false} />
+          <span className="text-sm font-semibold tracking-tight" data-tauri-drag-region>
+            STL Xplorer
+          </span>
+        </div>
+        <Tip label="Back (Alt+←)">
+          <Button variant="ghost" size="icon-sm" disabled={history.length === 0} onClick={back}>
+            <ArrowLeft />
+          </Button>
+        </Tip>
       </div>
-      <Tip label="Back (Alt+←)">
-        <Button variant="ghost" size="icon-sm" disabled={history.length === 0} onClick={back}>
-          <ArrowLeft />
-        </Button>
-      </Tip>
-      <div className="relative max-w-xl flex-1">
+      <div className="relative w-full">
         <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
         <input
           ref={inputRef}
@@ -73,22 +75,23 @@ export function TopBar() {
           )}
         </div>
       </div>
-      <div className="flex-1" data-tauri-drag-region />
-      <Tip label="Commands (Ctrl+K)">
-        <Button variant="ghost" size="icon-sm" onClick={() => setPaletteOpen(true)}>
-          <Command />
-        </Button>
-      </Tip>
-      <Tip label={dark ? "Light theme" : "Dark theme"}>
-        <Button variant="ghost" size="icon-sm" onClick={() => setTheme(dark ? "light" : "dark")}>
-          {dark ? <Sun /> : <Moon />}
-        </Button>
-      </Tip>
-      <Tip label="Settings (Ctrl+,)">
-        <Button variant="ghost" size="icon-sm" onClick={() => openSettings()}>
-          <Settings />
-        </Button>
-      </Tip>
+      <div className="flex items-center justify-end gap-1" data-tauri-drag-region>
+        <Tip label="Commands (Ctrl+K)">
+          <Button variant="ghost" size="icon-sm" onClick={() => setPaletteOpen(true)}>
+            <Command />
+          </Button>
+        </Tip>
+        <Tip label={dark ? "Light theme" : "Dark theme"}>
+          <Button variant="ghost" size="icon-sm" onClick={() => setTheme(dark ? "light" : "dark")}>
+            {dark ? <Sun /> : <Moon />}
+          </Button>
+        </Tip>
+        <Tip label="Settings (Ctrl+,)">
+          <Button variant="ghost" size="icon-sm" onClick={() => openSettings()}>
+            <Settings />
+          </Button>
+        </Tip>
+      </div>
     </div>
   );
 }

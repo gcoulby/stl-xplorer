@@ -150,7 +150,11 @@ pub fn scan_library_with(
     let mut changed = std::mem::take(&mut scan.changed_models);
     changed.sort_unstable();
     changed.dedup();
-    let retagged = crate::autotag::apply(&tx, Some(&changed), None)?;
+    let retagged = if crate::autotag::enabled_on_index(&tx)? {
+        crate::autotag::apply(&tx, Some(&changed), None)?
+    } else {
+        Vec::new()
+    };
     let mut fts_ids = changed.clone();
     fts_ids.extend(retagged);
     fts_ids.sort_unstable();
@@ -544,7 +548,7 @@ impl Scan<'_> {
                     name,
                     ext_of(name),
                     e.size as i64,
-                    0,
+                    e.mtime,
                     e.encrypted
                 ],
                 |r| r.get(0),

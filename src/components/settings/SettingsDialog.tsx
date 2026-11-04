@@ -6,6 +6,7 @@ import {
   CircleCheck,
   FolderOpen,
   FolderPlus,
+  FolderX,
   Library as LibraryIcon,
   Pencil,
   Plus,
@@ -36,6 +37,7 @@ import {
   Tip,
 } from "@/components/ui/overlay";
 import { TAG_COLOURS } from "@/components/browser/TagPicker";
+import { usePacks } from "@/features/packs";
 import {
   invalidateIndex,
   invalidateTags,
@@ -189,6 +191,7 @@ function TagsTab() {
     <>
       <Section
         title="Auto tags"
+        action={<AutoTagSwitch />}
         description={
           <>
             A tag with keywords goes on every file whose folder, archive or file name contains one
@@ -261,6 +264,50 @@ function TagsTab() {
         )}
       </Section>
     </>
+  );
+}
+
+function AutoTagSwitch() {
+  const qc = useQueryClient();
+  const settings = useSettings();
+  const [busy, setBusy] = useState(false);
+  const on = settings.data?.autotagOnIndex ?? true;
+  return (
+    <div className="flex shrink-0 flex-col items-end gap-1.5">
+      <Label className="flex items-center gap-2 text-xs font-normal whitespace-nowrap">
+        Tag new files while indexing
+        <Switch
+          checked={on}
+          disabled={!settings.data}
+          onCheckedChange={(v) =>
+            void api
+              .setAutotagOnIndex(v)
+              .then(() => qc.invalidateQueries({ queryKey: qk.settings }))
+              .catch((e: unknown) => toast.error("Could not save", errorMessage(e)))
+          }
+        />
+      </Label>
+      <Button
+        size="xs"
+        variant="outline"
+        disabled={busy}
+        onClick={() => {
+          setBusy(true);
+          void api
+            .applyAutoTags()
+            .then((n) => {
+              invalidateTags(qc);
+              toast.success(
+                n === 0 ? "Auto tags are up to date" : `Updated tags on ${plural(n, "file")}`,
+              );
+            })
+            .catch((e: unknown) => toast.error("Could not apply rules", errorMessage(e)))
+            .finally(() => setBusy(false));
+        }}
+      >
+        <RefreshCw className={busy ? "animate-spin" : undefined} /> Apply rules to everything now
+      </Button>
+    </div>
   );
 }
 
@@ -955,6 +1002,17 @@ function MaintenanceTab() {
             Clean up missing
           </Button>
         </div>
+      </Section>
+      <Section
+        title="Unpacked copies"
+        description="Folders that duplicate an archive sitting next to them. STL Xplorer previews straight from archives, so these only take up space."
+      >
+        <Button
+          variant="outline"
+          onClick={() => usePacks.getState().findUnpacked({ id: null, name: "your libraries" })}
+        >
+          <FolderX /> Find unpacked copies
+        </Button>
       </Section>
       <Section title="Rescan" description="Rescans only touch files whose size or date changed.">
         <Button variant="outline" onClick={() => void api.rescanAll()}>
