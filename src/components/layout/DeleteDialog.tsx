@@ -22,7 +22,7 @@ export function DeleteDialog() {
             <Trash2 className="size-4 text-destructive" />
           </div>
           <div className="flex min-w-0 flex-col gap-1">
-            <DialogTitle className="text-base leading-snug break-words">
+            <DialogTitle className="pr-6 text-base leading-snug [overflow-wrap:anywhere]">
               {single ? `Delete “${single.name}”?` : `Delete ${plural(targets.length, "item")}?`}
             </DialogTitle>
             <DialogDescription>
@@ -39,7 +39,7 @@ export function DeleteDialog() {
         {!single && (
           <ul className="flex flex-col gap-0.5 rounded-md border bg-muted/30 p-2 text-xs">
             {targets.slice(0, SHOWN).map((t) => (
-              <li key={t.key} className="flex gap-2">
+              <li key={t.key} className="flex min-w-0 gap-2">
                 <span className="min-w-0 truncate">{t.name}</span>
                 {t.note && <span className="shrink-0 text-muted-foreground">{t.note}</span>}
               </li>

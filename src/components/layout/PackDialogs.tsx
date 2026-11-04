@@ -75,7 +75,7 @@ function ZipForm() {
           <FileArchive className="size-4 text-amber-400" />
         </div>
         <div className="flex min-w-0 flex-col gap-1">
-          <DialogTitle className="text-base leading-snug break-words">
+          <DialogTitle className="pr-6 text-base leading-snug [overflow-wrap:anywhere]">
             {single ? `Zip “${single.name}”?` : `Zip ${plural(targets.length, "folder")}?`}
           </DialogTitle>
           <DialogDescription>
