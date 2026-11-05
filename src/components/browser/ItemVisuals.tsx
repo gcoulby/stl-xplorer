@@ -11,12 +11,14 @@ import {
   Library as LibraryIcon,
   Lock,
   Package,
+  Printer,
   ShieldCheck,
   TriangleAlert,
   Zap,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/misc";
+import { useBatch } from "@/features/batch";
 import { Tip } from "@/components/ui/overlay";
 import { useTags } from "@/features/queries";
 import { cn, fileKind } from "@/lib/utils";
@@ -132,8 +134,17 @@ export function VaultBadge({ compact }: { compact?: boolean }) {
 }
 
 export function ModelBadges({ m, compact = false }: { m: ModelInfo; compact?: boolean }) {
+  const batched = useBatch((s) => s.ids.includes(m.id));
   return (
     <>
+      {batched && (
+        <Tip label="In the print batch">
+          <Badge variant="secondary">
+            <Printer />
+            {!compact && "Batch"}
+          </Badge>
+        </Tip>
+      )}
       {m.encrypted && (
         <Tip label="Password protected">
           <Badge variant="secondary">

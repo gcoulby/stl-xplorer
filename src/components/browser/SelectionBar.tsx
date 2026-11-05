@@ -1,6 +1,7 @@
 import {
   ChevronDown,
   FolderInput,
+  Printer,
   Plus,
   Send,
   ShieldCheck,
@@ -21,6 +22,7 @@ import {
 } from "@/components/ui/menu";
 import { Popover, PopoverContent, PopoverTrigger, Tip } from "@/components/ui/overlay";
 import { useCollectionAdd, useOpenInSlicer, useVaultSave } from "@/features/actions";
+import { useBatch } from "@/features/batch";
 import { deletable, useDeleteConfirm } from "@/features/delete";
 import { useCollections, useSlicers } from "@/features/queries";
 import { usePrompt, type SelectedInfo } from "@/features/selection";
@@ -44,6 +46,7 @@ export function SelectionBar({
   const collectionAdd = useCollectionAdd();
   const ask = usePrompt((s) => s.ask);
   const askDelete = useDeleteConfirm((s) => s.ask);
+  const addToBatch = useBatch((s) => s.add);
   const n = sel.items.length;
   if (n === 0) return null;
   const def = slicers.find((s) => s.isDefault);
@@ -99,6 +102,14 @@ export function SelectionBar({
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
+      )}
+      {canOpen && (
+        <Tip label="Add to print batch (B)">
+          <Button variant="outline" size="sm" onClick={() => addToBatch(sel.openableIds)}>
+            <Printer />
+            Batch
+          </Button>
+        </Tip>
       )}
       {(sel.modelIds.length > 0 || sel.containerIds.length > 0) && (
         <Popover>

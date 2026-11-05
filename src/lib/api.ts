@@ -8,6 +8,7 @@ import type {
   Collection,
   DeleteReport,
   ContainerInfo,
+  BatchItem,
   LaunchReport,
   Library,
   ModelDetail,
@@ -108,6 +109,7 @@ export const api = {
   updateSlicer: (id: number, input: SlicerInput) => call<Slicer[]>("update_slicer", { id, input }),
   deleteSlicer: (id: number) => call<Slicer[]>("delete_slicer", { id }),
   setDefaultSlicer: (id: number) => call<Slicer[]>("set_default_slicer", { id }),
+  batchItems: (ids: number[]) => call<BatchItem[]>("batch_items", { ids }),
   openInSlicer: (modelIds: number[], slicerId?: number) =>
     call<LaunchReport>("open_in_slicer", { modelIds, slicerId }),
 

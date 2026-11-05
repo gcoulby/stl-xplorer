@@ -162,6 +162,14 @@ export interface SlicerPreset {
   alreadyAdded: boolean;
 }
 
+export interface BatchItem {
+  model: ModelInfo;
+  /** Library › folder › archive › inner folder. */
+  location: string;
+  containerId: number;
+  subpath: string;
+}
+
 export interface LaunchReport {
   launches: number;
   files: number;

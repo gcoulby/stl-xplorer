@@ -1,3 +1,4 @@
+pub mod batch;
 pub mod delete;
 pub mod files;
 pub mod index;

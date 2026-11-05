@@ -20,6 +20,7 @@ export const qk = {
   settings: ["settings"] as const,
   sevenzip: ["sevenzip"] as const,
   cache: ["cache-stats"] as const,
+  batch: (ids: number[]) => ["batch", ids] as const,
 };
 
 export const browseQuery = (containerId: number, subpath: string, flat = false) => ({
@@ -122,6 +123,7 @@ export function useCacheStats(enabled: boolean) {
 export function invalidateIndex(qc: QueryClient) {
   for (const key of [
     "libraries",
+    "batch",
     "browse",
     "model",
     "search",

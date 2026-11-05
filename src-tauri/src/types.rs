@@ -190,6 +190,17 @@ pub struct SlicerPreset {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct BatchItem {
+    pub model: ModelInfo,
+    /// Library › folder › archive › inner folder, for display.
+    pub location: String,
+    /// Where the file sits, for "show in browser".
+    pub container_id: i64,
+    pub subpath: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct LaunchReport {
     pub launches: usize,
     pub files: usize,

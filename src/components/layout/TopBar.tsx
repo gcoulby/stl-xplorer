@@ -1,6 +1,7 @@
 import { ArrowLeft, Command, Moon, Search, Settings, Sun, X } from "lucide-react";
 import { useRef } from "react";
 
+import { BatchButton } from "@/components/layout/BatchButton";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/misc";
 import { Tip } from "@/components/ui/overlay";
@@ -76,6 +77,7 @@ export function TopBar() {
         </div>
       </div>
       <div className="flex items-center justify-end gap-1" data-tauri-drag-region>
+        <BatchButton />
         <Tip label="Commands (Ctrl+K)">
           <Button variant="ghost" size="icon-sm" onClick={() => setPaletteOpen(true)}>
             <Command />

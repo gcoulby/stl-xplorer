@@ -33,6 +33,7 @@ import { ContextMenu, ContextMenuTrigger } from "@/components/ui/menu";
 import { Skeleton } from "@/components/ui/misc";
 import { Tip } from "@/components/ui/overlay";
 import { useOpenInSlicer } from "@/features/actions";
+import { useBatch } from "@/features/batch";
 import { useDeleteConfirm } from "@/features/delete";
 import { applyFilters, typeLabel } from "@/features/filtering";
 import { useListing, type ListItem } from "@/features/listing";
@@ -243,6 +244,20 @@ export function FileList() {
       case "Backspace":
         e.preventDefault();
         return goUp();
+      case "b":
+      case "B": {
+        if (e.ctrlKey || e.metaKey || e.altKey) return;
+        e.preventDefault();
+        const it = cur >= 0 ? items[cur] : undefined;
+        const ids =
+          sel.openableIds.length > 0
+            ? sel.openableIds
+            : it?.type === "model" && isMesh(it.model.ext) && !it.model.encrypted
+              ? [it.model.id]
+              : [];
+        if (ids.length > 0) useBatch.getState().add(ids);
+        return;
+      }
       case "Delete":
         if (sel.items.length > 0) {
           e.preventDefault();

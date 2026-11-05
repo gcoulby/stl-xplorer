@@ -8,6 +8,7 @@ import {
   FolderInput,
   FolderOpen,
   FolderSearch,
+  Printer,
   Package,
   PackageOpen,
   Plus,
@@ -34,6 +35,7 @@ import {
   useTagItems,
   useVaultSave,
 } from "@/features/actions";
+import { useBatch } from "@/features/batch";
 import type { ListItem } from "@/features/listing";
 import { deletable, useDeleteConfirm } from "@/features/delete";
 import { usePacks, zippable } from "@/features/packs";
@@ -64,6 +66,8 @@ export function ItemMenuContent({
   const askDelete = useDeleteConfirm((s) => s.ask);
   const askZip = usePacks((s) => s.askZip);
   const findUnpacked = usePacks((s) => s.findUnpacked);
+  const batchIds = useBatch((s) => s.ids);
+  const batch = useBatch.getState;
 
   const single = sel.items.length === 1 ? sel.items[0] : undefined;
   const def = slicers.find((s) => s.isDefault);
@@ -175,6 +179,16 @@ export function ItemMenuContent({
                 ))}
               </ContextMenuSubContent>
             </ContextMenuSub>
+          )}
+          {sel.openableIds.every((id) => batchIds.includes(id)) ? (
+            <ContextMenuItem onSelect={() => batch().remove(sel.openableIds)}>
+              <Printer /> Remove from print batch
+            </ContextMenuItem>
+          ) : (
+            <ContextMenuItem onSelect={() => batch().add(sel.openableIds)}>
+              <Printer /> Add to print batch
+              <span className="ml-auto pl-4 text-xs text-muted-foreground">B</span>
+            </ContextMenuItem>
           )}
         </>
       )}

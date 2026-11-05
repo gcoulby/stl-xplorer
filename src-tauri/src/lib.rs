@@ -123,6 +123,7 @@ pub fn run() {
             commands::files::reveal_in_folder,
             commands::files::open_externally,
             commands::files::open_project_page,
+            commands::batch::batch_items,
             commands::delete::delete_items,
             commands::packs::find_unpacked,
             commands::packs::delete_unpacked,

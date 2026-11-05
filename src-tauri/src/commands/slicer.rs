@@ -182,9 +182,11 @@ pub async fn open_in_slicer(
             let conn = st.db.lock()?;
             let mut keep = Vec::new();
             for id in model_ids {
-                let ext: String =
-                    conn.query_row("SELECT ext FROM models WHERE id = ?1", [id], |r| r.get(0))?;
-                if crate::util::is_mesh_ext(&ext) {
+                // A batch can outlive its files; skip ones that are gone rather than failing.
+                let ext: Option<String> = conn
+                    .query_row("SELECT ext FROM models WHERE id = ?1", [id], |r| r.get(0))
+                    .optional()?;
+                if ext.is_some_and(|e| crate::util::is_mesh_ext(&e)) {
                     keep.push(id);
                 }
             }

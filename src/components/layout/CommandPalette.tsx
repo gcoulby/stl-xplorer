@@ -7,6 +7,7 @@ import {
   Layers,
   List,
   Moon,
+  Printer,
   RefreshCw,
   Settings,
   ShieldCheck,
@@ -26,6 +27,7 @@ import {
   CommandShortcut,
 } from "@/components/ui/command";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/overlay";
+import { useBatch } from "@/features/batch";
 import { usePacks } from "@/features/packs";
 import { useCollections, useLibraries, useSearch } from "@/features/queries";
 import { toast } from "@/features/toast";
@@ -136,6 +138,19 @@ export function CommandPalette() {
             </CommandGroup>
             <CommandGroup heading="Actions">
               {[
+                {
+                  id: "batch",
+                  label: "Show print batch",
+                  icon: <Printer />,
+                  // Let the palette finish closing first, or its focus return closes the popover.
+                  act: () => window.setTimeout(() => useBatch.getState().setOpen(true), 50),
+                },
+                {
+                  id: "batch-clear",
+                  label: "Clear print batch",
+                  icon: <Eraser />,
+                  act: () => useBatch.getState().clear(),
+                },
                 {
                   id: "rescan",
                   label: "Rescan all libraries",
