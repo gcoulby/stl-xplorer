@@ -1,0 +1,8 @@
+{
+  "bundle": {
+    "resources": {
+      "../licences/7-Zip-License.txt": "licences/7-Zip-License.txt",
+      "binaries/7z.dll": "7z.dll"
+    }
+  }
+}

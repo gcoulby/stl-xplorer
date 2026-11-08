@@ -59,4 +59,4 @@ if (existsSync(licence)) {
   copyFileSync(licence, join(licenceDir, "7-Zip-License.txt"));
   console.log(`licence   ${licence}`);
 }
-console.log("\nBuild with the sidecar:  pnpm build:bundled");
+console.log(`\nBuild with the sidecar:  pnpm build:bundled${isWin ? ":windows" : ""}`);

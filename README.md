@@ -6,11 +6,16 @@ archives (split ones too), spin any STL in a 3D viewer, flick through the previe
 PDF guides that came with it, and send the files you want to your slicer. Nothing needs
 unpacking by hand.
 
-Runs on Windows. The code is written to work on macOS too, but that has not been tested yet.
+Runs on Windows and Apple Silicon Macs. Intel Macs are not supported.
 
 ## Download
 
-Get the Windows installer from the [latest release](https://github.com/gcoulby/stl-xplorer/releases/latest). It includes 7-Zip, so 7z and rar archives work straight away. The installer is not code-signed yet, so Windows SmartScreen may warn about an unrecognised app. Choose **More info → Run anyway**.
+Get the installer from the [latest release](https://github.com/gcoulby/stl-xplorer/releases/latest): the `x64-setup.exe` for Windows or the `aarch64.dmg` for macOS. Both include 7-Zip, so 7z and rar archives work straight away.
+
+Neither is code-signed with a Microsoft or Apple certificate yet, so the first launch is blocked:
+
+- **Windows:** SmartScreen warns about an unrecognised app. Choose **More info → Run anyway**.
+- **macOS:** the app is blocked because Apple cannot check it. Open **System Settings → Privacy & Security** and choose **Open Anyway** next to STL Xplorer.
 
 After that, STL Xplorer checks GitHub for new versions on startup and offers to install them. You can turn this off, or check by hand, in **Settings → About**. Version 0.1.0 came out before the updater existed, so install 0.2.0 by hand once.
 
@@ -172,19 +177,23 @@ To ship 7-Zip inside the installer:
 
 ```bash
 pnpm setup:7zip        # copies your installed 7-Zip into src-tauri/binaries
-pnpm build:bundled     # tauri build with the sidecar and its licence
+pnpm build:bundled     # tauri build with the sidecar and its licence (macOS)
+pnpm build:bundled:windows   # the same, plus 7z.dll
 ```
 
 On Windows the sidecar is `7z.exe` together with `7z.dll` (`7za.exe` cannot read rar). On
-macOS, use the standalone `7zz` from 7-zip.org: `pnpm setup:7zip /path/to/7zz`. 7-Zip is
+macOS, use the standalone `7zz` from 7-zip.org: `pnpm setup:7zip /path/to/7zz` (the release
+workflow downloads a pinned copy). 7-Zip is
 licensed under the LGPL with the unRAR restriction. Its licence is in
 [licences/7-Zip-License.txt](licences/7-Zip-License.txt).
 
 ### Releasing
 
-Pushing a version tag builds the Windows installers on GitHub Actions (with 7-Zip bundled) and
-publishes them as a release. Bump the version in `package.json`, `src-tauri/Cargo.toml` and
-`src-tauri/tauri.conf.json` first.
+Pushing a version tag builds the Windows and Apple Silicon macOS installers on GitHub Actions
+(with 7-Zip bundled) and publishes them as a release. Bump the version in `package.json`,
+`src-tauri/Cargo.toml` and `src-tauri/tauri.conf.json` first; the workflow refuses a tag that
+does not match all three. The release stays a draft until both platforms have uploaded their
+files, and its text comes from `.github/release-notes.md`.
 
 ```bash
 git tag v0.2.0

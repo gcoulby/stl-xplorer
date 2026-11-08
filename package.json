@@ -14,7 +14,8 @@
     "typecheck": "tsc -b --noEmit",
     "format": "prettier --write .",
     "setup:7zip": "node scripts/setup-7zip.mjs",
-    "build:bundled": "tauri build --config src-tauri/tauri.7zip.conf.json"
+    "build:bundled": "tauri build --config src-tauri/tauri.7zip.conf.json",
+    "build:bundled:windows": "tauri build --config src-tauri/tauri.7zip.conf.json --config src-tauri/tauri.7zip.windows.conf.json"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.9",
