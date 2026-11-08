@@ -515,6 +515,9 @@ pub fn parse_slt(text: &str) -> Listing {
 
 pub fn classify_error(text: &str, multi_part: bool) -> ArchiveFailure {
     let lower = text.to_lowercase();
+    // p7zip (still common on macOS PATHs) writes "Can not open", 7-Zip itself "Cannot open".
+    let cannot_open =
+        lower.contains("cannot open the file as") || lower.contains("can not open the file as");
     if lower.contains("wrong password") || lower.contains("encrypted archive") {
         return ArchiveFailure::Encrypted;
     }
@@ -528,15 +531,12 @@ pub fn classify_error(text: &str, multi_part: bool) -> ArchiveFailure {
             .unwrap_or_else(|| "A part of this archive is missing".into());
         return ArchiveFailure::MissingParts(detail);
     }
-    if multi_part
-        && (lower.contains("unexpected end of archive")
-            || lower.contains("cannot open the file as"))
-    {
+    if multi_part && (lower.contains("unexpected end of archive") || cannot_open) {
         return ArchiveFailure::MissingParts(
             "A part of this archive is missing or incomplete".into(),
         );
     }
-    if lower.contains("is not archive") || lower.contains("cannot open the file as") {
+    if lower.contains("is not archive") || cannot_open {
         return ArchiveFailure::Unsupported("not a readable archive".into());
     }
     if lower.contains("unsupported method") {
@@ -611,6 +611,10 @@ mod tests {
                 false
             ),
             ArchiveFailure::Unsupported(_)
+        ));
+        assert!(matches!(
+            classify_error("Open ERROR: Can not open the file as [7z] archive", true),
+            ArchiveFailure::MissingParts(_)
         ));
         assert_eq!(
             classify_error("ERROR: Missing volume : pack.part3.rar", true),
