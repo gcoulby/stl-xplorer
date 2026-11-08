@@ -22,6 +22,26 @@ export interface Columns {
   tags: boolean;
 }
 
+/** Widths in pixels of the list's fixed columns. Name takes whatever is left. */
+export interface ColumnWidths {
+  location: number;
+  type: number;
+  size: number;
+  modified: number;
+}
+export const DEFAULT_COLUMN_WIDTHS: ColumnWidths = {
+  location: 240,
+  type: 56,
+  size: 80,
+  modified: 96,
+};
+
+export type TreeSortKey = "name" | "models" | "size" | "modified";
+export interface TreeSort {
+  key: TreeSortKey;
+  desc: boolean;
+}
+
 export type Location =
   | { kind: "none" }
   | { kind: "container"; containerId: number; subpath: string }
@@ -66,8 +86,10 @@ interface UiState {
   /** Show every file below a folder or archive in one list instead of its subfolders. */
   flat: boolean;
   sort: Sort;
+  treeSort: TreeSort;
   filters: Filters;
   columns: Columns;
+  columnWidths: ColumnWidths;
   /** Zipping in progress, for the status bar. */
   packJob: PackProgress | null;
   theme: Theme;
@@ -90,8 +112,10 @@ interface UiState {
   setViewMode: (m: ViewMode) => void;
   setFlat: (flat: boolean) => void;
   setSort: (sort: Sort) => void;
+  setTreeSort: (sort: TreeSort) => void;
   setFilters: (f: Partial<Filters>) => void;
   setColumns: (c: Partial<Columns>) => void;
+  setColumnWidth: (col: keyof ColumnWidths, width: number) => void;
   setPackJob: (p: PackProgress | null) => void;
   setTheme: (t: Theme) => void;
   openSettings: (tab?: SettingsTab) => void;
@@ -120,8 +144,10 @@ export const useUi = create<UiState>()(
       viewMode: "list",
       flat: false,
       sort: { key: "name", desc: false },
+      treeSort: { key: "name", desc: false },
       filters: { types: [], tagIds: [] },
       columns: { type: false, size: true, modified: true, location: true, tags: true },
+      columnWidths: DEFAULT_COLUMN_WIDTHS,
       packJob: null,
       theme: "dark",
       settingsOpen: false,
@@ -212,8 +238,11 @@ export const useUi = create<UiState>()(
       setViewMode: (m) => set({ viewMode: m }),
       setFlat: (flat) => set({ flat, selection: [], anchor: null, focused: null }),
       setSort: (sort) => set({ sort }),
+      setTreeSort: (treeSort) => set({ treeSort }),
       setFilters: (f) => set({ filters: { ...get().filters, ...f } }),
       setColumns: (c) => set({ columns: { ...get().columns, ...c } }),
+      setColumnWidth: (col, width) =>
+        set({ columnWidths: { ...get().columnWidths, [col]: width } }),
       setPackJob: (p) => set({ packJob: p }),
       setTheme: (t) => set({ theme: t }),
       openSettings: (tab) => set({ settingsOpen: true, ...(tab ? { settingsTab: tab } : {}) }),
@@ -236,8 +265,10 @@ export const useUi = create<UiState>()(
         viewMode: s.viewMode,
         flat: s.flat,
         sort: s.sort,
+        treeSort: s.treeSort,
         filters: s.filters,
         columns: s.columns,
+        columnWidths: s.columnWidths,
         theme: s.theme,
       }),
     },

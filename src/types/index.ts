@@ -95,6 +95,19 @@ export interface BrowseResult {
   locations: string[];
 }
 
+/** Containers whose name matches a sidebar filter, and every container above them. */
+export interface TreeMatches {
+  matches: number[];
+  ancestors: number[];
+  truncated: boolean;
+}
+
+/** Every file in a set of containers, with where each file sits. */
+export interface FlatFiles {
+  models: ModelInfo[];
+  locations: string[];
+}
+
 export type RotationSource = "model" | "pack" | "global" | "none";
 
 export interface ResolvedRotation {

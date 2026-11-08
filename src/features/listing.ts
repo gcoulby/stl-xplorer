@@ -2,6 +2,7 @@ import { useMemo } from "react";
 
 import {
   useBrowse,
+  useCollectionFiles,
   useCollectionItems,
   useCollections,
   useProblemArchives,
@@ -55,7 +56,9 @@ export function useListing(loc: Location, flat: boolean): Listing {
     flat,
   );
   const search = useSearch(loc.kind === "search" ? loc.query : "");
-  const collection = useCollectionItems(loc.kind === "collection" ? loc.collectionId : null);
+  const inCollection = loc.kind === "collection" ? loc.collectionId : null;
+  const collection = useCollectionItems(flat ? null : inCollection);
+  const collectionFiles = useCollectionFiles(flat ? inCollection : null);
   const tagged = useTagged(loc.kind === "tag" ? loc.tagId : null);
   const problems = useProblemArchives(loc.kind === "problems");
   const collections = useCollections();
@@ -125,6 +128,23 @@ export function useListing(loc: Location, flat: boolean): Listing {
       }
       case "collection": {
         const name = collections.data?.find((c) => c.id === loc.collectionId)?.name ?? "Collection";
+        if (flat) {
+          const d = collectionFiles.data;
+          return {
+            ...EMPTY,
+            items: (d?.models ?? []).map((m, i) => ({
+              key: modelKey(m.id),
+              type: "model" as const,
+              model: m,
+              location: d?.locations[i],
+            })),
+            isLoading: collectionFiles.isLoading,
+            error: collectionFiles.error,
+            title: name,
+            showLocation: true,
+            emptyHint: "No files in this collection's packs.",
+          };
+        }
         return {
           ...EMPTY,
           items: (collection.data ?? []).map((c) => ({
@@ -200,6 +220,9 @@ export function useListing(loc: Location, flat: boolean): Listing {
     collection.data,
     collection.isLoading,
     collection.error,
+    collectionFiles.data,
+    collectionFiles.isLoading,
+    collectionFiles.error,
     tagged.data,
     tagged.isLoading,
     tagged.error,

@@ -42,7 +42,14 @@ import { useSelected } from "@/features/selection";
 import { toast } from "@/features/toast";
 import { api, errorMessage } from "@/lib/api";
 import { cn, formatBytes, formatDate, isMesh, plural } from "@/lib/utils";
-import { treeKey, useUi, type Columns, type SortKey } from "@/store/ui";
+import {
+  DEFAULT_COLUMN_WIDTHS,
+  treeKey,
+  useUi,
+  type ColumnWidths,
+  type Columns,
+  type SortKey,
+} from "@/store/ui";
 
 const ROW_H = 34;
 const TILE_MIN_W = 148;
@@ -68,6 +75,7 @@ export function FileList() {
   const filters = useUi((s) => s.filters);
   const sort = useUi((s) => s.sort);
   const columns = useUi((s) => s.columns);
+  const widths = useUi((s) => s.columnWidths);
   const items = useMemo(
     () => applyFilters(listing.items, filters, sort),
     [listing.items, filters, sort],
@@ -307,6 +315,15 @@ export function FileList() {
               if (e.target === e.currentTarget) setSelection([], null);
             }}
             className="@container relative min-h-0 flex-1 overflow-y-auto outline-none"
+            // Variables rather than props, so dragging a column does not re-render every row.
+            style={
+              {
+                "--col-location": `${widths.location}px`,
+                "--col-type": `${widths.type}px`,
+                "--col-size": `${widths.size}px`,
+                "--col-modified": `${widths.modified}px`,
+              } as React.CSSProperties
+            }
           >
             {listing.isLoading && items.length === 0 ? (
               <LoadingRows grid={viewMode === "grid"} />
@@ -401,7 +418,7 @@ function ListHeader({
   const setFlat = useUi((s) => s.setFlat);
   const loc = useUi((s) => s.location);
   const setFilters = useUi((s) => s.setFilters);
-  const browsing = loc.kind === "container";
+  const browsing = loc.kind === "container" || loc.kind === "collection";
   return (
     <div className="flex shrink-0 flex-col border-b">
       <div className="flex h-10 items-center gap-2 px-2">
@@ -523,6 +540,9 @@ function SortHeader({ k, label, className }: { k: SortKey; label: string; classN
   );
 }
 
+const MIN_COL_W = 40;
+const MAX_COL_W = 640;
+
 function ListColumns({ columns, showLocation }: { columns: Columns; showLocation: boolean }) {
   return (
     <div className="sticky top-0 z-10 flex h-7 items-center gap-3 border-b bg-pane/95 px-3 text-[11px] font-medium tracking-wide text-muted-foreground backdrop-blur">
@@ -530,18 +550,90 @@ function ListColumns({ columns, showLocation }: { columns: Columns; showLocation
         <SortHeader k="name" label="Name" />
       </span>
       {showLocation && columns.location && (
-        <span className="w-[30%] min-w-0 uppercase">Location</span>
+        <HeaderCell col="location">
+          <span className="truncate uppercase">Location</span>
+        </HeaderCell>
       )}
-      {columns.type && <SortHeader k="type" label="Type" className="w-14" />}
-      {columns.size && <SortHeader k="size" label="Size" className="w-20 justify-end" />}
+      {columns.type && (
+        <HeaderCell col="type">
+          <SortHeader k="type" label="Type" />
+        </HeaderCell>
+      )}
+      {columns.size && (
+        <HeaderCell col="size">
+          <SortHeader k="size" label="Size" className="w-full justify-end" />
+        </HeaderCell>
+      )}
       {columns.modified && (
-        <SortHeader
-          k="modified"
-          label="Modified"
-          className="hidden w-24 justify-end @[34rem]:flex"
-        />
+        <HeaderCell col="modified" className="hidden @[34rem]:flex">
+          <SortHeader k="modified" label="Modified" className="w-full justify-end" />
+        </HeaderCell>
       )}
     </div>
+  );
+}
+
+function HeaderCell({
+  col,
+  className,
+  children,
+}: {
+  col: keyof ColumnWidths;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <span
+      className={cn("relative flex h-full min-w-0 shrink-0 items-center", className)}
+      style={{ width: `var(--col-${col})` }}
+    >
+      <ColumnResizer col={col} />
+      {children}
+    </span>
+  );
+}
+
+/** Drag handle on a column's left edge. Name is the flexible column, so widening any other
+ *  column means pulling its left edge leftwards. */
+function ColumnResizer({ col }: { col: keyof ColumnWidths }) {
+  const setWidth = useUi((s) => s.setColumnWidth);
+  const onPointerDown = (e: React.PointerEvent<HTMLSpanElement>) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const el = e.currentTarget;
+    el.setPointerCapture(e.pointerId);
+    const startX = e.clientX;
+    const startW = useUi.getState().columnWidths[col];
+    const move = (ev: PointerEvent) =>
+      setWidth(
+        col,
+        Math.round(Math.min(MAX_COL_W, Math.max(MIN_COL_W, startW + startX - ev.clientX))),
+      );
+    const up = () => {
+      el.removeEventListener("pointermove", move);
+      el.removeEventListener("pointerup", up);
+      el.removeEventListener("pointercancel", up);
+      document.body.style.cursor = "";
+    };
+    el.addEventListener("pointermove", move);
+    el.addEventListener("pointerup", up);
+    el.addEventListener("pointercancel", up);
+    document.body.style.cursor = "col-resize";
+  };
+  return (
+    <span
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Resize column"
+      title="Drag to resize. Double-click to reset."
+      onPointerDown={onPointerDown}
+      onClick={(e) => e.stopPropagation()}
+      onDoubleClick={() => setWidth(col, DEFAULT_COLUMN_WIDTHS[col])}
+      className="group/resize absolute top-0 -left-2.5 z-10 flex h-full w-2 cursor-col-resize justify-center"
+    >
+      <span className="h-full w-px bg-border opacity-0 transition-opacity group-hover/resize:bg-primary group-hover/resize:opacity-100 [[data-file-list]:hover_&]:opacity-100" />
+    </span>
   );
 }
 
@@ -645,24 +737,34 @@ function ListRow({
       </div>
       {showLocation && columns.location && (
         <span
-          className="w-[30%] min-w-0 shrink-0 truncate text-xs text-muted-foreground"
+          className="min-w-0 shrink-0 truncate text-xs text-muted-foreground"
+          style={{ width: "var(--col-location)" }}
           title={location}
         >
           {location || "Here"}
         </span>
       )}
       {columns.type && (
-        <span className="w-14 shrink-0 truncate text-xs text-muted-foreground">
+        <span
+          className="shrink-0 truncate text-xs text-muted-foreground"
+          style={{ width: "var(--col-type)" }}
+        >
           {typeLabel(it)}
         </span>
       )}
       {columns.size && (
-        <span className="w-20 shrink-0 text-right text-xs text-muted-foreground tabular-nums">
+        <span
+          className="shrink-0 truncate text-right text-xs text-muted-foreground tabular-nums"
+          style={{ width: "var(--col-size)" }}
+        >
           {size !== null ? formatBytes(size) : ""}
         </span>
       )}
       {columns.modified && (
-        <span className="hidden w-24 shrink-0 text-right text-xs text-muted-foreground tabular-nums @[34rem]:block">
+        <span
+          className="hidden shrink-0 truncate text-right text-xs text-muted-foreground tabular-nums @[34rem]:block"
+          style={{ width: "var(--col-modified)" }}
+        >
           {mtime ? formatDate(mtime) : ""}
         </span>
       )}

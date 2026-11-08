@@ -208,6 +208,25 @@ pub struct LaunchReport {
     pub message: Option<String>,
 }
 
+/// Containers whose name matches a sidebar filter, and every container above them.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TreeMatches {
+    pub matches: Vec<i64>,
+    pub ancestors: Vec<i64>,
+    /// Set when there were more matches than were returned.
+    pub truncated: bool,
+}
+
+/// Every file in a set of containers as one list, with where each file sits.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FlatFiles {
+    pub models: Vec<ModelInfo>,
+    /// One entry per model.
+    pub locations: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SearchHit {

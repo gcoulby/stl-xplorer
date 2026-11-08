@@ -15,6 +15,9 @@ export const qk = {
   tagged: (id: number) => ["tagged", id] as const,
   collections: ["collections"] as const,
   collectionItems: (id: number) => ["collection-items", id] as const,
+  // Under "collection-items" so anything that refreshes members refreshes this too.
+  collectionFiles: (id: number) => ["collection-items", id, "files"] as const,
+  treeFilter: (q: string) => ["tree-filter", q] as const,
   slicers: ["slicers"] as const,
   presets: ["slicer-presets"] as const,
   settings: ["settings"] as const,
@@ -99,6 +102,25 @@ export function useCollectionItems(id: number | null) {
   });
 }
 
+export function useCollectionFiles(id: number | null) {
+  return useQuery({
+    queryKey: qk.collectionFiles(id ?? -1),
+    queryFn: () => api.collectionFiles(id ?? -1),
+    enabled: id !== null,
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useTreeFilter(query: string) {
+  return useQuery({
+    queryKey: qk.treeFilter(query),
+    queryFn: () => api.treeFilter(query),
+    enabled: query.length > 0,
+    placeholderData: keepPreviousData,
+    staleTime: 10_000,
+  });
+}
+
 export function useSlicers() {
   return useQuery({ queryKey: qk.slicers, queryFn: api.listSlicers });
 }
@@ -129,6 +151,7 @@ export function invalidateIndex(qc: QueryClient) {
     "search",
     "tagged",
     "collection-items",
+    "tree-filter",
     "settings",
     "problems",
     "tags",
@@ -138,7 +161,7 @@ export function invalidateIndex(qc: QueryClient) {
 }
 
 export function invalidateTags(qc: QueryClient) {
-  for (const key of ["tags", "browse", "model", "search", "tagged"]) {
+  for (const key of ["tags", "browse", "model", "search", "tagged", "collection-items"]) {
     void qc.invalidateQueries({ queryKey: [key] });
   }
 }

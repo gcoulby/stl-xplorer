@@ -140,6 +140,8 @@ pub fn run() {
             commands::tags::delete_collection,
             commands::tags::collection_add,
             commands::tags::collection_items,
+            commands::index::collection_files,
+            commands::index::tree_filter,
             commands::vault::vault_save,
         ])
         .run(tauri::generate_context!());

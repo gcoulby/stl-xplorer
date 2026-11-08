@@ -1,6 +1,9 @@
 import { useQueries, useQueryClient } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
   ChevronRight,
   EyeOff,
   FolderOpen,
@@ -17,8 +20,9 @@ import {
   ShieldCheck,
   Tags as TagsIcon,
   TriangleAlert,
+  X,
 } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { ItemMenuContent } from "@/components/browser/ItemMenu";
 import { ArchiveDirIcon, ContainerIcon } from "@/components/browser/ItemVisuals";
@@ -35,8 +39,10 @@ import {
   ContextMenuSubTrigger,
   ContextMenuTrigger,
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/menu";
@@ -52,13 +58,14 @@ import {
   useCollections,
   useLibraries,
   useTags,
+  useTreeFilter,
 } from "@/features/queries";
 import { describeSelection, usePrompt } from "@/features/selection";
 import { toast } from "@/features/toast";
 import { api, errorMessage } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { treeKey, useUi } from "@/store/ui";
-import type { BrowseResult, ContainerInfo, Library } from "@/types";
+import { treeKey, useUi, type TreeSort, type TreeSortKey } from "@/store/ui";
+import type { BrowseResult, ContainerInfo, Library, VirtualDir } from "@/types";
 
 interface TreeRow {
   key: string;
@@ -81,25 +88,87 @@ function parseTreeKey(k: string): [number, string] {
   return [Number(k.slice(0, i)), k.slice(i + 1)];
 }
 
-function useTreeRows(libs: Library[]): TreeRow[] {
+interface TreeFilter {
+  /** Lower-cased filter text. */
+  text: string;
+  matches: Set<number>;
+  ancestors: Set<number>;
+}
+
+const TREE_SORT_LABELS: Record<TreeSortKey, string> = {
+  name: "Name",
+  models: "Model count",
+  size: "Size",
+  modified: "Last modified",
+};
+
+const byName = (a: string, b: string) =>
+  a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
+
+function sortContainers(list: ContainerInfo[], sort: TreeSort): ContainerInfo[] {
+  const dir = sort.desc ? -1 : 1;
+  const value = (c: ContainerInfo) =>
+    sort.key === "models" ? c.modelCount : sort.key === "size" ? c.size : c.mtime;
+  return [...list].sort((a, b) => {
+    // Folders stay above archives whatever the sort, as in the file list.
+    const fa = a.kind === "folder" ? 0 : 1;
+    const fb = b.kind === "folder" ? 0 : 1;
+    if (fa !== fb) return fa - fb;
+    const d = sort.key === "name" ? byName(a.name, b.name) : value(a) - value(b);
+    return d !== 0 ? d * dir : byName(a.name, b.name);
+  });
+}
+
+function sortDirs(list: VirtualDir[], sort: TreeSort): VirtualDir[] {
+  const dir = sort.desc ? -1 : 1;
+  // Folders inside archives have no size or date of their own.
+  return [...list].sort((a, b) => {
+    const d = sort.key === "models" ? a.modelCount - b.modelCount : byName(a.name, b.name);
+    return d !== 0 ? d * dir : byName(a.name, b.name);
+  });
+}
+
+function useTreeRows(
+  libs: Library[],
+  filter: TreeFilter | null,
+  collapsed: Set<string>,
+): { rows: TreeRow[]; openKeys: Set<string> } {
   const expanded = useUi((s) => s.expanded);
+  const sort = useUi((s) => s.treeSort);
+  // While filtering, everything above a match opens so the match can be seen.
+  const openKeys = useMemo(() => {
+    const keys = new Set(expanded);
+    if (filter)
+      for (const id of filter.ancestors) {
+        const k = treeKey(id, "");
+        if (!collapsed.has(k)) keys.add(k);
+      }
+    return keys;
+  }, [expanded, filter, collapsed]);
+  const openList = useMemo(() => [...openKeys], [openKeys]);
   const results = useQueries({
-    queries: expanded.map((k) => {
+    queries: openList.map((k) => {
       const [cid, sub] = parseTreeKey(k);
       return browseQuery(cid, sub);
     }),
   });
   const data = new Map<string, BrowseResult>();
-  expanded.forEach((k, i) => {
+  openList.forEach((k, i) => {
     const d = results[i]?.data;
     if (d) data.set(k, d);
   });
   const dataKey = results.map((r) => r.dataUpdatedAt).join(",");
 
-  return useMemo(() => {
+  const rows = useMemo(() => {
     const rows: TreeRow[] = [];
-    const open = new Set(expanded);
-    const addChildren = (cid: number, sub: string, depth: number, guard: number) => {
+    // `filtering` is false below a match: a matching folder shows all of its contents.
+    const addChildren = (
+      cid: number,
+      sub: string,
+      depth: number,
+      guard: number,
+      filtering: boolean,
+    ) => {
       if (guard > 64) return;
       const d = data.get(treeKey(cid, sub));
       if (!d) {
@@ -114,21 +183,24 @@ function useTreeRows(libs: Library[]): TreeRow[] {
         });
         return;
       }
-      for (const dir of d.dirs) {
-        const key = treeKey(cid, dir.path);
-        rows.push({
-          key,
-          depth,
-          label: dir.name,
-          containerId: cid,
-          subpath: dir.path,
-          kind: "dir",
-          expandable: dir.hasChildren,
-          count: dir.modelCount,
-        });
-        if (open.has(key)) addChildren(cid, dir.path, depth + 1, guard + 1);
-      }
-      for (const c of d.containers) {
+      if (!filtering)
+        for (const dir of sortDirs(d.dirs, sort)) {
+          const key = treeKey(cid, dir.path);
+          rows.push({
+            key,
+            depth,
+            label: dir.name,
+            containerId: cid,
+            subpath: dir.path,
+            kind: "dir",
+            expandable: dir.hasChildren,
+            count: dir.modelCount,
+          });
+          if (openKeys.has(key)) addChildren(cid, dir.path, depth + 1, guard + 1, false);
+        }
+      for (const c of sortContainers(d.containers, sort)) {
+        if (filter && filtering && !filter.matches.has(c.id) && !filter.ancestors.has(c.id))
+          continue;
         const key = treeKey(c.id, "");
         rows.push({
           key,
@@ -142,11 +214,20 @@ function useTreeRows(libs: Library[]): TreeRow[] {
           count: c.modelCount,
           issues: c.issueCount,
         });
-        if (open.has(key) && c.hasChildren) addChildren(c.id, "", depth + 1, guard + 1);
+        if (openKeys.has(key) && c.hasChildren)
+          addChildren(
+            c.id,
+            "",
+            depth + 1,
+            guard + 1,
+            filtering && !(filter?.matches.has(c.id) ?? false),
+          );
       }
     };
     for (const lib of libs) {
+      const libMatches = filter ? lib.name.toLowerCase().includes(filter.text) : true;
       if (lib.rootContainerId === null) {
+        if (!libMatches) continue;
         rows.push({
           key: `lib:${lib.id}`,
           depth: 0,
@@ -159,6 +240,7 @@ function useTreeRows(libs: Library[]): TreeRow[] {
         });
         continue;
       }
+      if (filter && !libMatches && !filter.ancestors.has(lib.rootContainerId)) continue;
       const key = treeKey(lib.rootContainerId, "");
       rows.push({
         key,
@@ -172,11 +254,22 @@ function useTreeRows(libs: Library[]): TreeRow[] {
         count: lib.modelCount,
         issues: lib.issueCount,
       });
-      if (open.has(key)) addChildren(lib.rootContainerId, "", 1, 0);
+      if (openKeys.has(key))
+        addChildren(lib.rootContainerId, "", 1, 0, filter !== null && !libMatches);
     }
     return rows;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [libs, expanded, dataKey]);
+  }, [libs, openKeys, filter, sort, dataKey]);
+  return { rows, openKeys };
+}
+
+function useDebounced<T>(value: T, ms: number): T {
+  const [v, setV] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setV(value), ms);
+    return () => clearTimeout(t);
+  }, [value, ms]);
+  return v;
 }
 
 export function Sidebar() {
@@ -203,11 +296,24 @@ function SectionHeader({ title, children }: { title: string; children?: React.Re
 function LibraryTree() {
   const libsQ = useLibraries();
   const libs = useMemo(() => (libsQ.data ?? []).filter((l) => l.enabled), [libsQ.data]);
-  const rows = useTreeRows(libs);
+  const [filterText, setFilterText] = useState("");
+  const query = useDebounced(filterText.trim(), 150);
+  const matchesQ = useTreeFilter(query);
+  // Rows the user closed by hand while filtering, which would otherwise be forced open.
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  useEffect(() => setCollapsed(new Set()), [query]);
+  const filter = useMemo<TreeFilter | null>(() => {
+    if (!query || !matchesQ.data) return null;
+    return {
+      text: query.toLowerCase(),
+      matches: new Set(matchesQ.data.matches),
+      ancestors: new Set(matchesQ.data.ancestors),
+    };
+  }, [query, matchesQ.data]);
+  const { rows, openKeys } = useTreeRows(libs, filter, collapsed);
   const loc = useUi((s) => s.location);
   const scans = useUi((s) => s.scans);
-  const { navigate, toggleExpanded, openSettings } = useUi.getState();
-  const expanded = useUi((s) => s.expanded);
+  const { navigate, toggleExpanded: storeToggle, openSettings } = useUi.getState();
   const ref = useRef<HTMLDivElement>(null);
   const [cursor, setCursor] = useState<string | null>(null);
   const [menuRow, setMenuRow] = useState<TreeRow | null>(null);
@@ -219,6 +325,18 @@ function LibraryTree() {
   });
 
   const activeKey = loc.kind === "container" ? treeKey(loc.containerId, loc.subpath) : null;
+
+  const toggleExpanded = (key: string, open?: boolean) => {
+    const want = open ?? !openKeys.has(key);
+    storeToggle(key, want);
+    setCollapsed((cur) => {
+      if (want === !cur.has(key)) return cur;
+      const next = new Set(cur);
+      if (want) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
 
   const go = (r: TreeRow) => {
     if (r.kind === "loading" || r.containerId < 0) return;
@@ -248,7 +366,7 @@ function LibraryTree() {
         return;
       case "ArrowLeft":
         e.preventDefault();
-        if (r && expanded.includes(r.key)) toggleExpanded(r.key, false);
+        if (r && openKeys.has(r.key)) toggleExpanded(r.key, false);
         return;
       case "Enter":
         e.preventDefault();
@@ -260,6 +378,7 @@ function LibraryTree() {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <SectionHeader title="Libraries">
+        <TreeSortMenu />
         <Tip label="Rescan all">
           <Button
             variant="ghost"
@@ -287,6 +406,41 @@ function LibraryTree() {
           </Button>
         </Tip>
       </SectionHeader>
+      <div className="relative shrink-0 px-2 pb-1.5">
+        <input
+          value={filterText}
+          onChange={(e) => setFilterText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape" && filterText) {
+              e.preventDefault();
+              e.stopPropagation();
+              setFilterText("");
+            } else if (e.key === "ArrowDown") {
+              e.preventDefault();
+              ref.current?.focus();
+            }
+          }}
+          placeholder="Filter folders and archives"
+          aria-label="Filter libraries"
+          spellCheck={false}
+          className="h-7 w-full rounded-md border border-input bg-transparent pr-7 pl-2 text-xs outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 dark:bg-input/30"
+        />
+        {filterText && (
+          <button
+            type="button"
+            onClick={() => setFilterText("")}
+            className="absolute top-1/2 right-3.5 flex size-4 -translate-y-1/2 items-center justify-center rounded text-muted-foreground hover:text-foreground"
+            aria-label="Clear filter"
+          >
+            <X className="size-3" />
+          </button>
+        )}
+      </div>
+      {filter && matchesQ.data?.truncated && (
+        <p className="shrink-0 px-3 pb-1 text-[11px] text-muted-foreground">
+          Showing the first 500 matches. Type more to narrow it down.
+        </p>
+      )}
       <ContextMenu>
         <ContextMenuTrigger asChild>
           <div
@@ -324,6 +478,10 @@ function LibraryTree() {
                   Add one
                 </button>
               </div>
+            ) : filter && rows.length === 0 ? (
+              <div className="px-2 py-4 text-xs text-muted-foreground">
+                No folders or archives match “{query}”.
+              </div>
             ) : (
               <div style={{ height: virt.getTotalSize(), position: "relative" }}>
                 {virt.getVirtualItems().map((vr) => {
@@ -336,7 +494,7 @@ function LibraryTree() {
                       top={vr.start}
                       active={r.key === activeKey}
                       cursor={r.key === cursor}
-                      open={expanded.includes(r.key)}
+                      open={openKeys.has(r.key)}
                       scanning={r.library ? Boolean(scans[r.library.id]) : false}
                       onToggle={() => toggleExpanded(r.key)}
                       onGo={() => go(r)}
@@ -350,6 +508,54 @@ function LibraryTree() {
         {menuRow && <TreeMenu row={menuRow} onGo={() => go(menuRow)} />}
       </ContextMenu>
     </div>
+  );
+}
+
+function TreeSortMenu() {
+  const sort = useUi((s) => s.treeSort);
+  const setSort = useUi((s) => s.setTreeSort);
+  const changed = sort.key !== "name" || sort.desc;
+  return (
+    <DropdownMenu>
+      <Tip label={`Sort: ${TREE_SORT_LABELS[sort.key]}, ${sort.desc ? "descending" : "ascending"}`}>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            className={cn("size-6", changed && "text-primary")}
+            aria-label="Sort libraries"
+          >
+            <ArrowUpDown className="size-3.5" />
+          </Button>
+        </DropdownMenuTrigger>
+      </Tip>
+      <DropdownMenuContent align="end" className="w-48">
+        <DropdownMenuLabel>Sort folders by</DropdownMenuLabel>
+        {(Object.keys(TREE_SORT_LABELS) as TreeSortKey[]).map((k) => (
+          <DropdownMenuCheckboxItem
+            key={k}
+            checked={sort.key === k}
+            // Counts, sizes and dates read best biggest and newest first.
+            onCheckedChange={() => setSort({ key: k, desc: k !== "name" })}
+          >
+            {TREE_SORT_LABELS[k]}
+          </DropdownMenuCheckboxItem>
+        ))}
+        <DropdownMenuSeparator />
+        <DropdownMenuCheckboxItem
+          checked={!sort.desc}
+          onCheckedChange={() => setSort({ ...sort, desc: false })}
+        >
+          <ArrowUp /> Ascending
+        </DropdownMenuCheckboxItem>
+        <DropdownMenuCheckboxItem
+          checked={sort.desc}
+          onCheckedChange={() => setSort({ ...sort, desc: true })}
+        >
+          <ArrowDown /> Descending
+        </DropdownMenuCheckboxItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 

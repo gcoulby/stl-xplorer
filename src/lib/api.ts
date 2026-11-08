@@ -8,6 +8,8 @@ import type {
   Collection,
   DeleteReport,
   ContainerInfo,
+  FlatFiles,
+  TreeMatches,
   BatchItem,
   LaunchReport,
   Library,
@@ -132,6 +134,8 @@ export const api = {
   collectionAdd: (id: number, containerIds: number[], add: boolean) =>
     call<null>("collection_add", { id, containerIds, add }),
   collectionItems: (id: number) => call<ContainerInfo[]>("collection_items", { id }),
+  treeFilter: (query: string) => call<TreeMatches>("tree_filter", { query }),
+  collectionFiles: (id: number) => call<FlatFiles>("collection_files", { id }),
 
   vaultSave: (modelIds: number[], containerIds: number[]) =>
     call<VaultReport>("vault_save", { modelIds, containerIds }),

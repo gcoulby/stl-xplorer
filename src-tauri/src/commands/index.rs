@@ -8,8 +8,8 @@ use crate::db::queries::{self, CONTAINER_COLS, MODEL_COLS};
 use crate::error::AppResult;
 use crate::orientation;
 use crate::types::{
-    BrowseResult, ContainerInfo, ModelDetail, ModelInfo, ProblemArchive, ResolvedLocation,
-    Rotation, VirtualDir,
+    BrowseResult, ContainerInfo, FlatFiles, ModelDetail, ModelInfo, ProblemArchive,
+    ResolvedLocation, Rotation, TreeMatches, VirtualDir,
 };
 use crate::util::is_mesh_ext;
 
@@ -226,6 +226,108 @@ pub fn browse_flat_impl(
         flat: true,
         locations,
     })
+}
+
+/// Every file in every pack of a collection. Locations start with the pack's name, and a file
+/// reachable through two members (a folder and a pack inside it) is listed once.
+pub fn collection_files_impl(conn: &Connection, collection_id: i64) -> AppResult<FlatFiles> {
+    let mut stmt = conn.prepare_cached(
+        "SELECT c.id, c.name FROM containers c
+         JOIN collection_items ci ON ci.container_id = c.id
+         WHERE ci.collection_id = ?1 AND c.missing = 0",
+    )?;
+    let members: Vec<(i64, String)> = stmt
+        .query_map([collection_id], |r| Ok((r.get(0)?, r.get(1)?)))?
+        .collect::<Result<_, _>>()?;
+    let mut seen = std::collections::HashSet::new();
+    let mut rows: Vec<(String, ModelInfo)> = Vec::new();
+    for (id, name) in members {
+        let r = browse_flat_impl(conn, id, "")?;
+        for (m, loc) in r.models.into_iter().zip(r.locations) {
+            if !seen.insert(m.id) {
+                continue;
+            }
+            let loc = if loc.is_empty() {
+                name.clone()
+            } else {
+                format!("{name} › {loc}")
+            };
+            rows.push((loc, m));
+        }
+    }
+    rows.sort_by_cached_key(|(loc, m)| (loc.to_lowercase(), m.name.to_lowercase()));
+    let (locations, models) = rows.into_iter().unzip();
+    Ok(FlatFiles { models, locations })
+}
+
+const TREE_MATCH_CAP: usize = 500;
+
+/// Folders and archives in enabled libraries whose name contains `query`, for filtering the
+/// sidebar. Done in SQL because the tree only loads what is expanded.
+pub fn tree_filter_impl(conn: &Connection, query: &str) -> AppResult<TreeMatches> {
+    let q = query.trim();
+    if q.is_empty() {
+        return Ok(TreeMatches {
+            matches: Vec::new(),
+            ancestors: Vec::new(),
+            truncated: false,
+        });
+    }
+    let pattern = format!(
+        "%{}%",
+        q.replace('\\', "\\\\")
+            .replace('%', "\\%")
+            .replace('_', "\\_")
+    );
+    let mut stmt = conn.prepare_cached(
+        "SELECT c.id FROM containers c JOIN libraries l ON l.id = c.library_id
+         WHERE l.enabled = 1 AND c.missing = 0 AND c.parent_id IS NOT NULL
+           AND (c.file_count > 0 OR c.issue_count > 0)
+           AND c.name LIKE ?1 ESCAPE '\\'
+         LIMIT ?2",
+    )?;
+    let mut matches: Vec<i64> = stmt
+        .query_map(params![pattern, TREE_MATCH_CAP as i64 + 1], |r| r.get(0))?
+        .collect::<Result<_, _>>()?;
+    let truncated = matches.len() > TREE_MATCH_CAP;
+    matches.truncate(TREE_MATCH_CAP);
+
+    let mut ancestors = std::collections::BTreeSet::new();
+    let mut stmt = conn.prepare_cached(
+        "WITH RECURSIVE up(id) AS (
+           SELECT parent_id FROM containers WHERE id = ?1
+           UNION
+           SELECT c.parent_id FROM containers c JOIN up ON c.id = up.id
+         ) SELECT id FROM up WHERE id IS NOT NULL",
+    )?;
+    for &id in &matches {
+        for row in stmt.query_map([id], |r| r.get::<_, i64>(0))? {
+            ancestors.insert(row?);
+        }
+    }
+    Ok(TreeMatches {
+        matches,
+        ancestors: ancestors.into_iter().collect(),
+        truncated,
+    })
+}
+
+#[tauri::command]
+pub async fn tree_filter(app: AppHandle, query: String) -> AppResult<TreeMatches> {
+    blocking(app, move |_, st| {
+        let conn = st.db.lock()?;
+        tree_filter_impl(&conn, &query)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn collection_files(app: AppHandle, id: i64) -> AppResult<FlatFiles> {
+    blocking(app, move |_, st| {
+        let conn = st.db.lock()?;
+        collection_files_impl(&conn, id)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -551,6 +653,64 @@ mod tests {
         assert_eq!(inside.models.len(), 2);
         assert_eq!(loc(&inside, "one.stl"), "");
         assert_eq!(loc(&inside, "two.jpg"), "b");
+    }
+
+    #[test]
+    fn collection_files_flatten_members_once() {
+        let conn = crate::db::test_conn();
+        conn.execute_batch(
+            "INSERT INTO libraries (id, name, path) VALUES (1, 'L', '/l');
+             INSERT INTO containers (id, library_id, parent_id, kind, path, name) VALUES
+               (1, 1, NULL, 'folder', '/l', 'L'),
+               (2, 1, 1, 'folder', '/l/Pack', 'Pack'),
+               (3, 1, 2, 'zip', '/l/Pack/p.zip', 'p.zip'),
+               (4, 1, 1, 'zip', '/l/other.zip', 'other.zip');
+             INSERT INTO models (container_id, library_id, rel_path, name, ext) VALUES
+               (2, 1, '/l/Pack/loose.stl', 'loose.stl', 'stl'),
+               (3, 1, 'a/one.stl', 'one.stl', 'stl'),
+               (4, 1, 'two.stl', 'two.stl', 'stl');
+             INSERT INTO collections (id, name) VALUES (1, 'C');
+             INSERT INTO collection_items (collection_id, container_id) VALUES (1, 2), (1, 3), (1, 4);",
+        )
+        .expect("seed");
+        let r = collection_files_impl(&conn, 1).expect("files");
+        assert_eq!(r.models.len(), 3);
+        let loc = |name: &str| {
+            let i = r.models.iter().position(|m| m.name == name).expect("model");
+            r.locations[i].clone()
+        };
+        assert_eq!(loc("loose.stl"), "Pack");
+        assert_eq!(loc("two.stl"), "other.zip");
+        assert!(loc("one.stl").ends_with("a"));
+    }
+
+    #[test]
+    fn tree_filter_finds_deep_matches_and_their_parents() {
+        let conn = crate::db::test_conn();
+        conn.execute_batch(
+            "INSERT INTO libraries (id, name, path) VALUES (1, 'L', '/l');
+             INSERT INTO containers (id, library_id, parent_id, kind, path, name, file_count) VALUES
+               (1, 1, NULL, 'folder', '/l', 'L', 3),
+               (2, 1, 1, 'folder', '/l/Terrain', 'Terrain', 2),
+               (3, 1, 2, 'zip', '/l/Terrain/Dungeon_100%.zip', 'Dungeon_100%.zip', 2),
+               (4, 1, 1, 'zip', '/l/Dungeon empty.zip', 'Dungeon empty.zip', 0),
+               (5, 1, 1, 'zip', '/l/Dungeonx100.zip', 'Dungeonx100.zip', 1);",
+        )
+        .expect("seed");
+        let r = tree_filter_impl(&conn, "dungeon").expect("filter");
+        assert_eq!(
+            r.matches.len(),
+            2,
+            "empty containers stay hidden, as in the tree"
+        );
+        assert!(r.ancestors.contains(&1) && r.ancestors.contains(&2));
+        // Wildcards in the query are literal.
+        let r = tree_filter_impl(&conn, "_100%").expect("filter");
+        assert_eq!(r.matches, vec![3]);
+        assert!(tree_filter_impl(&conn, "  ")
+            .expect("blank")
+            .matches
+            .is_empty());
     }
 
     #[test]
